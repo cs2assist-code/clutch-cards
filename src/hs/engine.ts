@@ -92,7 +92,7 @@ export type Ev =
   | { t: 'play'; p: PI; card: string; uid?: string; target?: string }
   | { t: 'power'; p: PI; target?: string }
   | { t: 'atk'; from: string; to: string }
-  | { t: 'dmg'; id: string; n: number; hs?: boolean; bonus?: boolean; blocked?: number }
+  | { t: 'dmg'; id: string; n: number; hs?: boolean; bonus?: boolean; blocked?: number; wb?: boolean }
   | { t: 'heal'; id: string; n: number }
   | { t: 'armor'; id: string; n: number }
   | { t: 'buff'; id: string; text: string }
@@ -372,7 +372,9 @@ function damageUnit(s: HState, u: HUnit, n: number, o: DmgOpt = {}): number {
   const blocked = pierce || o.hs ? 0 : Math.min(u.armor, n - 1);   // броня режет каждое попадание, но 1 урон проходит всегда
   const d = n - blocked;
   u.hp -= d;
-  s.log.push({ t: 'dmg', id: u.uid, n: d, hs: o.hs, bonus: o.bonus, blocked: blocked || undefined });
+  // «прострел»: пуля прошла сквозь броню (винтовки, снайперки, Five-SeveN…) — значок в килфиде
+  const wb = pierce && o.src !== 'fire' && u.armor > 0 && !o.hs;
+  s.log.push({ t: 'dmg', id: u.uid, n: d, hs: o.hs, bonus: o.bonus, blocked: blocked || undefined, wb: wb || undefined });
   return d;
 }
 function damage(s: HState, id: string, n: number, o: DmgOpt = {}) {

@@ -63,6 +63,12 @@ export function shot(from: DOMRect, to: DOMRect, kind: 'bullet' | 'sniper' | 'kn
   setTimeout(() => put('fx-impact', b.x, b.y, '<i></i><i></i><i></i><i></i><i></i>', 500), 90 * speed);
 }
 
+/** Хедшот: красная вспышка-кольцо, значок головы с прицелом и надпись. */
+export function headshot(at: DOMRect) {
+  const c = center(at);
+  put('fx-hs', c.x, c.y - at.height * 0.18, `<i class="hs-ring"></i><svg viewBox="0 0 24 24"><path d="M12 3.2a6.3 6.3 0 0 0-6.3 6.3c0 2.2 1.1 3.6 2.3 4.6V17h8v-2.9c1.2-1 2.3-2.4 2.3-4.6A6.3 6.3 0 0 0 12 3.2zM9.6 9.2a1.6 1.6 0 1 1 0 3.2 1.6 1.6 0 0 1 0-3.2zm4.8 0a1.6 1.6 0 1 1 0 3.2 1.6 1.6 0 0 1 0-3.2zM9 18h6v2.6H9z"/></svg><b>ХЕДШОТ</b>`, 1100);
+}
+
 /** Взрыв гранаты/огня по точке. */
 export function burst(at: DOMRect, kind: 'he' | 'fire' | 'zap') {
   if (reduced()) return;

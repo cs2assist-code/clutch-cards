@@ -99,6 +99,8 @@ export const sfx = {
     const n = noise(c, 0.9); const f = c.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 1200;
     n.connect(f).connect(env(c, 0.3, 0.08, 0.8)); n.start();
   },
+  /** «Дзынь» хедшота: звонкий металлический удар по шлему. */
+  dink() { const c = ready(); if (!c) return; tone(c, 2600, 0.09, 'triangle', 0.13); tone(c, 3900, 0.06, 'sine', 0.07, 0.005); tone(c, 1700, 0.12, 'sine', 0.05, 0.02); },
   deny() { const c = ready(); if (!c) return; tone(c, 160, 0.12, 'square', 0.06); },
 };
 

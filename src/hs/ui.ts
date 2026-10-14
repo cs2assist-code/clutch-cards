@@ -7,6 +7,7 @@ import { c4, preloadShots, sample, sfx, weaponShot } from '../sound';
 import { preloadVoice, say, setSubtitle, type VoKey } from '../voice';
 import { track } from '../analytics';
 import { recordRound, recordRoundsMatch, markTutorialDone } from '../stats';
+import { SIL } from './art-index';
 import { CLASS_RU, HCARDS, hcard, hImg, unitArt, KW_RU, MAP_RULES, matchup, POWERS, sigCards, STYLE_BEATS, STYLE_RU, styleOf, type HCard, type KW, type Style } from './cards';
 import {
   attackTargets, attackBonus, canAttack, canSave, canShop, costOf, isClutch, isCovered, shopPrice, isBehind, lossBonus, maxHp, endTurn, findUnit, heroId, HS, incomeOf, mulligan, newGame, playTargets, powerTargets, startGame,
@@ -130,7 +131,26 @@ function speak(key: VoKey, p: PI | 'hq') {
   const h = s.p[p].hero;
   say(key, shortName(h.agent), h.side, p === 0, h.agent);
 }
-const HS_ICON = '<svg class="kf-hs" viewBox="0 0 24 24"><path d="M12 2a8 8 0 0 0-8 8v4l2 2v4h3v-2h2v2h2v-2h2v2h3v-4l2-2v-4a8 8 0 0 0-8-8zm-3.5 9a2 2 0 1 1 0 4 2 2 0 0 1 0-4zm7 0a2 2 0 1 1 0 4 2 2 0 0 1 0-4z"/></svg>';
+// Значки килфида как в CS2: голова с прицелом — хедшот, пуля сквозь стену — прострел
+const HS_ICON = '<svg class="kf-hs" viewBox="0 0 24 24" aria-label="хедшот"><path d="M12 3.2a6.3 6.3 0 0 0-6.3 6.3c0 2.2 1.1 3.6 2.3 4.6V17h8v-2.9c1.2-1 2.3-2.4 2.3-4.6A6.3 6.3 0 0 0 12 3.2zM9.6 9.2a1.6 1.6 0 1 1 0 3.2 1.6 1.6 0 0 1 0-3.2zm4.8 0a1.6 1.6 0 1 1 0 3.2 1.6 1.6 0 0 1 0-3.2zM9 18h6v2.6H9z"/><path d="M12 .6v2.4M12 21v2.4M.6 12H3M21 12h2.4" stroke="currentColor" stroke-width="1.6" fill="none"/></svg>';
+const WB_ICON = '<svg class="kf-wb" viewBox="0 0 24 24" aria-label="прострел"><path d="M9 3h5v18H9z" opacity=".55"/><path d="M1 11h5l2 1-2 1H1zM15.5 11.2h4.5l3 .8-3 .8h-4.5z"/><path d="M10 7l2.5 1.5M10 15l2.5 1.5M11 10.5h2" stroke="#0b0d10" stroke-width="1.2"/></svg>';
+/** Силуэт оружия/предмета из CS2 (public/img/sil_<id>.webp) — для килфида и значков классов. */
+function silHTML(id: string, cls = 'sil'): string {
+  if (!SIL.has(id)) return '';
+  const u = (globalThis as { __CARD_IMG?: Record<string, string> }).__CARD_IMG?.[`sil_${id}`] ?? `img/sil_${id}.webp`;
+  return `<i class="${cls}" style="--m:url('${esc(cssUrl(u))}')" aria-hidden="true"></i>`;
+}
+const CLASS_SIL: Partial<Record<HCard['cls'], string>> = { pistol: 'glock', smg: 'mp7', shotgun: 'nova', rifle: 'ak47', sniper: 'awp', heavy: 'negev', spell: 'he', bomb: 'fakeplant' };
+/** Чем убили: силуэт конкретного оружия, иначе — класса. */
+function weaponSil(cardId: string | null, agentId?: string): string {
+  if (!cardId) {
+    const by: Record<string, string> = { ct_seal: 'scar20', ct_sas: 'flash', ct_fbi: 'kit', t_balkan: 'molotov', t_pro: 'deagle' };
+    return silHTML((agentId && by[agentId]) || 'knife', 'sil kf-w');
+  }
+  const c = hcard(cardId);
+  return silHTML(SIL.has(c.img) ? c.img : SIL.has(c.id) ? c.id : CLASS_SIL[c.cls] ?? 'he', 'sil kf-w');
+}
+let wbHit = new Set<string>();
 /** Кто сейчас стреляет/кидает — чтобы подписать убийство в килфиде. */
 let kctx: { p: PI; by: string; from?: string; to?: string; hero?: boolean } | null = null;
 let hsHit = new Set<string>();
@@ -157,6 +177,58 @@ setInterval(() => {
   tickAcc += 250;
   if (tickAcc >= every) { tickAcc = 0; c4.beep(b.bomb <= 1); }
 }, 250);
+
+// ─────────────────────────── MVP: лучший боец партии ───────────────────────────
+interface MvpRow { uid: string; card: string; p: PI; kills: number; dmg: number }
+/** Ключ партии: офлайн — сам стол (меняется на месте), онлайн — матч (стол приходит заново каждым шагом). */
+const gameKey = (): object | null => S.on ?? S.s;
+let mvpOf: object | null = null, mvpRows = new Map<string, MvpRow>();
+function mvpRow(uid: string, card: string | null, p: PI): MvpRow | null {
+  if (mvpOf !== gameKey()) { mvpOf = gameKey(); mvpRows = new Map(); }
+  if (!card || hcard(card).kind !== 'unit') return null;
+  let r = mvpRows.get(uid);
+  if (!r) { r = { uid, card, p, kills: 0, dmg: 0 }; mvpRows.set(uid, r); }
+  return r;
+}
+function mvpKill(uid: string, card: string | null, p: PI) { const r = mvpRow(uid, card, p); if (r) r.kills++; }
+function mvpDmg(uid: string, card: string | null, p: PI, n: number) { const r = mvpRow(uid, card, p); if (r) r.dmg += n; }
+/** Экран MVP в стиле CS2: агент победителя крупно, лучший боец партии и его фраги. */
+function mvpHTML(): string {
+  const s = S.s; if (!s || s.winner === null) return '';
+  const w = s.winner, h = s.p[w].hero, a = agent(h.agent);
+  const rows = mvpOf === gameKey() ? [...mvpRows.values()] : [];
+  const best = rows.filter((r) => r.p === w).sort((x, y) => y.kills - x.kills || y.dmg - x.dmg)[0]
+    ?? rows.sort((x, y) => y.kills - x.kills || y.dmg - x.dmg)[0];
+  const who = w === 0 ? 'Вы' : S.on ? esc(S.on.opp.name) : 'Бот';
+  const bc = best ? hcard(best.card) : null;
+  const art = bc ? unitArt(bc, s.p[best!.p].hero.side) : null;
+  const kn = (n: number) => `${n} ${n % 10 === 1 && n % 100 !== 11 ? 'убийство' : [2, 3, 4].includes(n % 10) && ![12, 13, 14].includes(n % 100) ? 'убийства' : 'убийств'}`;
+  return `<div class="mvp f-${h.side}">
+    <div class="mvp-agent"><span class="portrait">${agentArt(h.side, h.agent)}</span><i class="mvp-star">★</i></div>
+    <div class="mvp-txt"><small>MVP партии</small><b>${who} · ${esc(a.name)}</b><span>${h.side === 'T' ? 'Террористы победили' : 'Спецназ победил'} · убийств за партию: ${s.p[w].kills}</span></div>
+    ${best && bc ? `<div class="mvp-best"><span class="mvp-card">${art ? `<img src="${esc(art)}" alt="">` : `<img class="w" src="${esc(hImg(bc))}" alt="">`}</span>
+      <div><small>Лучший боец</small><b>${esc(bc.name)}${best.p === 0 ? '' : ' (соперник)'}</b><span>${kn(best.kills)} · ${best.dmg} урона</span></div></div>` : ''}
+  </div>`;
+}
+
+// ─────────────────────────── Деньги: прибавка «бегущими» цифрами, как в бай-меню CS2 ───────────────────────────
+const shownCash: [number | null, number | null] = [null, null];
+let cashOf: object | null = null;
+function cashTick() {
+  for (const el of document.querySelectorAll<HTMLElement>('.hs-cash b[data-cash]')) {
+    const p = Number(el.dataset.cash) as PI, to = Number(el.dataset.to);
+    const cur = shownCash[p] ?? to;
+    if (cur === to) { if (el.dataset.at !== String(to)) { el.dataset.at = String(to); el.innerHTML = moneyHTML(to); } continue; }
+    const step = Math.max(50, Math.round(Math.abs(to - cur) / 6 / 50) * 50);
+    const nx = cur < to ? Math.min(to, cur + step) : Math.max(to, cur - step);
+    shownCash[p] = nx; el.dataset.at = String(nx); el.innerHTML = moneyHTML(nx);
+    el.classList.toggle('up', to > cur); el.classList.toggle('down', to < cur);
+    if (nx === to) setTimeout(() => el.classList.remove('up', 'down'), 350);
+  }
+  requestAnimationFrame(cashTick);
+}
+requestAnimationFrame(cashTick);
+const moneyHTML = (n: number) => `<em>$</em>${n.toLocaleString('ru-RU')}`;
 
 // ─────────────────────────── Действия ───────────────────────────
 const elOf = (id: string) => hooks.root.querySelector<HTMLElement>(`[data-hid="${CSS.escape(id)}"]`);
@@ -240,6 +312,7 @@ async function playEvents(evs: Ev[], sn: fx.Snapshot, p: PI) {
           const tr = e.target ? rectOf(e.target, sn) : null;
           const heroR = rectOf(heroId(e.p), sn);
           kctx = { p: e.p, by: e.card, hero: true };
+          if (e.p === 0) { const to = tr ?? hooks.root.querySelector(`.hs-board.b${e.p === 0 ? 1 : 0}`)?.getBoundingClientRect() ?? null; fx.flyCard(`<span class="hc f-${c.side}">${cardFace(c)}</span>`, handFrom ?? new DOMRect(innerWidth / 2 - 30, innerHeight - 90, 60, 80), to); handFrom = null; await wait(300); }
           const boardR = (q: PI) => hooks.root.querySelector(`.hs-board.b${q}`)?.getBoundingClientRect() ?? null;
           const foeP: PI = e.p === 0 ? 1 : 0;
           if (e.card === 'he') {
@@ -293,7 +366,14 @@ async function playEvents(evs: Ev[], sn: fx.Snapshot, p: PI) {
       }
       case 'dmg': {
         const r = rectOf(e.id, sn);
-        if (r) fx.splash(r, e.hs ? 'HS' : `−${e.n}${e.bonus ? '!' : ''}`, 'damage');
+        if (r) fx.splash(r, `−${e.n}${e.bonus ? '!' : ''}`, 'damage');
+        if (r && e.hs) { fx.headshot(r); sfx.dink(); }
+        if (r && e.wb) setTimeout(() => fx.splash(new DOMRect(r.x - 16, r.y - 22, r.width, r.height), 'прострел', 'block'), 140);
+        if (e.wb) wbHit.add(e.id);
+        if (kctx?.from) {
+          const ret = e.id === kctx.from, by = ret ? kctx.to : kctx.from;
+          if (by && by !== 'h0' && by !== 'h1') mvpDmg(by, findUnitAny(by, sn), ret ? (kctx.p === 0 ? 1 : 0) : kctx.p, e.n);
+        }
         if (r && e.blocked) setTimeout(() => fx.splash(new DOMRect(r.x + 16, r.y - 20, r.width, r.height), `броня ${e.blocked}`, 'block'), 120);
         fx.hitFlash(elOf(e.id));
         if (e.hs) hsHit.add(e.id);
@@ -319,10 +399,12 @@ async function playEvents(evs: Ev[], sn: fx.Snapshot, p: PI) {
             const kc = retaliated ? (kctx.to ? findUnitAny(kctx.to, sn) : null) : kctx.hero ? null : kctx.by;
             const icCard = retaliated ? kc : kctx.by !== 'power' && kctx.by !== 'knife' ? kctx.by : null;
             killer = kc ? hcard(kc).name : shortName(s.p[kP].hero.agent);
-            icon = icCard ? typeIcon(hcard(icCard)) : TYPE_ICON_SVG('spell');
-          } else { killer = shortName(s.p[kP].hero.agent); icon = TYPE_ICON_SVG('spell'); }
+            icon = weaponSil(icCard, kctx.by === 'power' ? s.p[kP].hero.agent : undefined);
+            if (kc && kctx.from && !retaliated) mvpKill(kctx.from, kc, kP);
+            else if (kc && retaliated && kctx.to) mvpKill(kctx.to, kc, kP);
+          } else { killer = shortName(s.p[kP].hero.agent); icon = weaponSil(null, s.p[kP].hero.agent); }
           const kSide = s.p[kP].hero.side;
-          fx.killfeed(`${feedName(kSide, killer)}<span class="kic">${icon}${hsHit.has(e.id) ? HS_ICON : ''}</span>${feedName(vSide, hcard(vCard).name)}`, kP === 0,
+          fx.killfeed(`${feedName(kSide, killer)}<span class="kic">${icon}${wbHit.has(e.id) ? WB_ICON : ''}${hsHit.has(e.id) ? HS_ICON : ''}</span>${feedName(vSide, hcard(vCard).name)}`, kP === 0,
             hooks.root.querySelector('.hs-board.b1')?.getBoundingClientRect());
           if (kP !== vOwner) {
             turnKills[kP]++;
@@ -331,7 +413,7 @@ async function playEvents(evs: Ev[], sn: fx.Snapshot, p: PI) {
             if (turnKills[kP] >= 3 && !foeBoard.length && kP === 0) fx.roundBanner('Эйс', `${turnKills[0]} убийства за ход — стол соперника чист`, 'ace', 1800);
           }
         }
-        hsHit.delete(e.id);
+        hsHit.delete(e.id); wbHit.delete(e.id);
         await wait(160); break;
       }
       case 'cash': {
@@ -806,8 +888,9 @@ function unitHTML(u: HUnit, p: PI, tg: Set<string>) {
   const clutch = c.kind !== 'bomb' && isClutch(s, p);
   const blink = c.kind === 'bomb' ? ` style="--blink:${[0.25, 0.25, 0.45, 0.8][Math.min(u.bomb ?? 3, 3)]}s"` : '';
   return `<button class="${cls}" data-act="hs-ent" data-hid="${u.uid}"${blink}>
-    ${art ? `<span class="hu-art full"><img src="${esc(art)}" alt="" decoding="async"></span>` : `<span class="hu-art"><img src="${esc(hImg(c))}" alt="" decoding="async"></span>`}
-    ${kwChips(u)}${u.armor ? `<b class="hu-arm">${u.armor}</b>` : ''}${u.kw.includes('vet') ? '<b class="hu-vet">★</b>' : ''}${bonus ? `<em class="hu-bonus">+${bonus}</em>` : ''}${u.marked ? '<em class="hu-tag trade">трейд +2</em>' : clutch ? '<em class="hu-tag clutch">клатч</em>' : ''}${covered ? '<i class="hu-cov" title="За укрытием: снайперы не достанут"></i>' : ''}
+    <span class="hu-art${art ? ' full' : ''}"><img src="${esc(art ?? hImg(c))}" alt="">${u.blind ? '<i class="st-blind"><b></b><b></b><b></b></i>' : ''}${u.burn ? '<i class="st-fire"><b></b><b></b><b></b><b></b></i>' : ''}</span>
+    ${c.kind === 'unit' && CLASS_SIL[c.cls] ? `<span class="hu-cls" title="${esc(clsRu(c.cls))}">${typeIcon(c)}</span>` : ''}
+    ${kwChips(u)}${u.armor ? `<b class="hu-arm" title="Броня ${u.armor}"><i>${u.armor}</i></b>` : ''}${u.kw.includes('vet') ? '<b class="hu-vet" title="Ветеран"><i>★</i></b>' : ''}${bonus ? `<em class="hu-bonus">+${bonus}</em>` : ''}${u.marked ? '<em class="hu-tag trade">трейд +2</em>' : clutch ? '<em class="hu-tag clutch">клатч</em>' : ''}${covered ? '<i class="hu-cov" title="За укрытием: снайперы не достанут"></i>' : ''}
     ${c.kind === 'bomb' ? `<b class="hu-timer">${u.bomb}</b>` : `<b class="hu-atk ${u.atk > (c.atk ?? 0) ? 'up' : ''}"><i>${u.atk}</i></b>`}
     <b class="hu-hp ${u.hp < u.maxHp ? 'dmg' : u.maxHp > base ? 'up' : ''}"><i>${u.hp}</i></b>
   </button>`;
@@ -827,7 +910,8 @@ function heroHTML(p: PI, tg: Set<string>) {
   const canPw = p === 0 && myTurn() && !!powerTargets(s, 0);
   const nextLoss = isBehind(s, p) ? lossBonus({ lossStreak: P.lossStreak + 1 }) : 0;
   const next = Math.min(HS.maxMoney, incomeOf(P) + Math.min(P.money, HS.carry)) + P.bonus + nextLoss;
-  const cash = `<div class="hs-cash" id="cash${p}"><b>${money(P.money)}</b>${pips(P.money)}
+  if (cashOf !== gameKey()) { cashOf = gameKey(); shownCash[0] = s.p[0].money; shownCash[1] = s.p[1].money; }
+  const cash = `<div class="hs-cash" id="cash${p}"><b data-cash="${p}" data-to="${P.money}" data-at="${shownCash[p]}">${moneyHTML(shownCash[p]!)}</b>${pips(P.money)}
       ${P.lossStreak ? `<small class="hs-loss">отставание ×${Math.min(P.lossStreak, HS.lossMax)}: +${money(lossBonus(P))}</small>` : ''}
       ${p === 0 ? `<small>след. ход ${money(next)}</small>` : `<small>${P.hand.length} в руке · ${P.deck.length} в колоде</small>`}
       ${p === 0 ? `<button class="hs-shopbtn ${canShop(s, 0) && myTurn() ? 'can' : ''}" data-act="hs-shop">Бай-меню · ${money(shopPrice(P))}</button>` : ''}</div>`;
@@ -864,12 +948,11 @@ const TYPE_ICON: Partial<Record<HCard['cls'], string>> = {
   trap: '<path d="M12 5c5 0 9 4 10 7-1 3-5 7-10 7S3 15 2 12c1-3 5-7 10-7zm0 3a4 4 0 1 0 0 8 4 4 0 0 0 0-8z"/>',
   bomb: '<rect x="4" y="7" width="16" height="12" rx="2"/><path d="M8 7V4h8v3"/>',
 };
-const TYPE_ICON_SVG = (k: HCard['cls']) => `<svg viewBox="0 0 24 24" aria-hidden="true">${TYPE_ICON[k] ?? TYPE_ICON.spell}</svg>`;
-const typeIcon = (c: HCard) => `<svg viewBox="0 0 24 24" aria-hidden="true">${TYPE_ICON[c.cls] ?? TYPE_ICON.spell}</svg>`;
+const typeIcon = (c: HCard) => (CLASS_SIL[c.cls] && SIL.has(CLASS_SIL[c.cls]!) ? silHTML(CLASS_SIL[c.cls]!, `sil cls-${c.cls}`) : `<svg viewBox="0 0 24 24" aria-hidden="true">${TYPE_ICON[c.cls] ?? TYPE_ICON.spell}</svg>`);
 function cardFace(c: HCard, free = false, cost = c.cost, side: Side = mySide()) {
   const art = unitArt(c, side);
   return `<span class="hc-plate"></span>
-    ${art ? `<span class="hc-full"><img src="${esc(art)}" alt="" decoding="async"></span>` : `<span class="hc-art"><img src="${esc(hImg(c))}" alt="" decoding="async"></span>`}
+    ${art ? `<span class="hc-full"><img src="${esc(art)}" alt=""></span>` : `<span class="hc-art"><img src="${esc(hImg(c))}" alt="" decoding="async"></span>`}
     <span class="hc-ribbon"><span class="hc-name">${esc(c.name)}</span></span>
     <span class="hc-type">${typeIcon(c)}</span>
     <span class="hc-cost ${free ? 'free' : ''} ${cost < c.cost ? 'cheap' : ''}"><i>${free ? '0' : cost ? (cost / 1000).toLocaleString('ru-RU') : '0'}</i></span>${free ? '<span class="hc-trophy">трофей</span>' : ''}${c.modes ? '<span class="hc-modes">⇄</span>' : ''}
@@ -892,7 +975,7 @@ function bigCardHTML(c: HCard, u?: HUnit, side: Side = mySide()) {
   if (c.modes && !u) extra.push(`<li><b>Режим на выбор:</b> ${c.modes.map((m) => `${esc(m.name)} (${esc(m.text)})`).join(' или ')}.</li>`);
   return `<div class="hcb f-${c.side}">
     <div class="hc big">${cardFace(c, false, c.cost, side)}</div>
-    <div class="hcb-txt"><b>${esc(c.name)}</b><small>${money(c.cost)} · ${c.kind === 'spell' ? 'действие' : c.kind === 'bomb' ? 'бомба' : c.kind === 'trap' ? 'засада' : clsRu(c.cls)}${u?.kw.includes('vet') ? ' · ★ ветеран' : ''}</small>
+    <div class="hcb-txt"><b>${esc(c.name)}</b><small>${money(c.cost)} · <span class="hcb-cls">${typeIcon(c)}</span>${c.kind === 'spell' ? 'действие' : c.kind === 'bomb' ? 'бомба' : c.kind === 'trap' ? 'засада' : clsRu(c.cls)}${u?.kw.includes('vet') ? ' · ★ ветеран' : ''}</small>
       ${c.text ? `<p>${esc(c.text)}</p>` : ''}<ul>${kwLines(kw)}${extra.join('')}</ul></div></div>`;
 }
 const clsRu = (c: HCard['cls']) => ({ pistol: 'пистолет', smg: 'пистолет-пулемёт', shotgun: 'дробовик', rifle: 'винтовка', sniper: 'снайперская винтовка', heavy: 'пулемёт', cover: 'укрытие', token: 'жетон', spell: 'действие', bomb: 'бомба', trap: 'засада' })[c];
@@ -1012,6 +1095,7 @@ function overHTML() {
   return `<div class="hs-ov"><div class="hs-ovbox ${won ? 'win' : 'lose'}">
     <h2>${done ? (won ? 'Матч ваш!' : 'Матч проигран') : (last.win ? 'Победа' : 'Поражение')}</h2>
     <p class="note">${why} · счёт ${S.score[0]}:${S.score[1]}</p>
+    ${mvpHTML()}
     <ol class="hs-res">${S.results.map((r, i) => `<li class="${r.win ? 'w' : 'l'}">Игра ${i + 1} · за ${r.side} · ${r.win ? 'победа' : 'поражение'} · ${r.reason === 'bomb' ? 'бомба' : 'герой'} · ${r.turns} ход.</li>`).join('')}</ol>
     ${S.tut ? '<p class="note">Обучение пройдено! Дальше — обычные матчи с ботом или онлайн.</p>' : ''}
     ${done ? `${S.tut ? '' : '<button class="primary big-btn" data-act="hs-again">Ещё матч</button>'}<button class="${S.tut ? 'primary big-btn' : 'ghost'}" data-act="hs-share">Поделиться</button><button class="ghost" data-act="hs-menu">В меню</button>`
@@ -1192,6 +1276,15 @@ function journalHTML() {
 }
 
 // Для проверки эффектов: #fxtest в адресе открывает доступ к слою эффектов из консоли
+// #autoplay — за игрока ходит тот же бот (для проверки оформления и долгих прогонов)
+if (location.hash.includes('autoplay')) setInterval(() => {
+  const s = S.s;
+  if (!s || S.on || S.busy || S.phase !== 'play' || s.turn !== 0 || s.winner !== null) return;
+  if (s.p[0].choice) { void act({ k: 'choose', i: 0 }, 0); return; }
+  const a = botStep(s, 0, 'hard');
+  if (a) void act(a, 0); else void playerEndTurn();
+}, 300);
+if (location.hash.includes('fxtest')) Object.assign(window, { __hs: S, __hsRender: () => hooks.render(), __kf: (h: string) => fx.killfeed(h, true) });
 if (location.hash.includes('fxtest')) (window as unknown as { __fx: typeof fx; __say: typeof say }).__fx = fx, (window as unknown as { __say: typeof say }).__say = say;
 
 // ─────────────────────────── Онлайн ───────────────────────────
@@ -1480,6 +1573,7 @@ function onlineOverHTML() {
   return `<div class="hs-ov"><div class="hs-ovbox ${win ? 'win' : 'lose'}">
     <h2>${win ? 'Победа' : 'Поражение'}</h2>
     <p class="note">${esc(REASON_RU[r.reason]?.(win) ?? '')} · против ${esc(o.opp.name)}</p>
+    ${mvpHTML()}
     ${rt ? `<p class="ol-delta ${delta >= 0 ? 'up' : 'down'}">${rt.before} → <b>${rt.after}</b> (${delta >= 0 ? '+' : ''}${delta})<small>${esc(rt.league)}</small></p>` : '<p class="note">Дуэль без рейтинга</p>'}
     <button class="primary big-btn" data-act="hs-share">Поделиться</button>
     <button class="ghost" data-act="hs-again">${o.ranked ? 'Ещё рейтинговая' : 'В лобби'}</button>
