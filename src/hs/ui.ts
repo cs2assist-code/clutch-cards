@@ -48,6 +48,8 @@ const S = {
   radioOpen: false,
   /** Обучающий матч: какие подсказки уже показаны. */
   tut: null as null | TutState,
+  /** Таймер хода против бота: когда истекает (0 — не идёт) и для какого хода заведён. */
+  turnDl: 0, turnKey: '',
 };
 interface OnlineMatch {
   ranked: boolean; opp: { name: string; rating: number; league: string };
@@ -964,9 +966,9 @@ function boardHTML() {
     <div class="hs-backs">${backs}</div>
     ${heroHTML(1, tg)}
     <div class="hs-board b1 ${zoneCls('b1')}" style="--n:${HS.board}">${en.board.map((u) => unitHTML(u, 1, tg)).join('') || '<span class="hs-empty"></span>'}</div>
-    <div class="hs-mid">${boardEmblem(S.map)}
+    <div class="hs-mid has-tb">${turnBombHTML()}${boardEmblem(S.map)}
       <span class="hs-midl">${bomb ? `<span class="hs-bomb">C4 · ${bomb.bomb}</span>` : ''}<button class="hs-logbtn" data-act="hs-log">Журнал · ход ${Math.ceil(s.turnNo / 2)}</button>${S.on ? radioHTML() : ''}</span>
-      <span class="hs-status">${s.turn === 0 && !S.busy ? 'Ваш ход' : esc(S.last || (s.turn === 0 ? '…' : 'Ход соперника'))}${S.on ? ` <b class="hs-timer ${s.turn === 0 ? 'mine' : ''}" data-dl="${S.on.deadline}"></b>` : ''}</span>
+      <span class="hs-status">${s.turn === 0 && !S.busy ? 'Ваш ход' : esc(S.last || (s.turn === 0 ? '…' : 'Ход соперника'))}</span>
       <button class="hs-end ${idle ? 'idle' : ''}" data-act="hs-end" ${myTurn() ? '' : 'disabled'}>${s.turn === 0 ? 'Конец хода' : 'Ждите'}</button>
     </div>
     <div class="hs-board b0 ${playStage() === 'place' ? 'placing' : ''} ${zoneCls('b0')}" style="--n:${HS.board}">${playStage() === 'place'
@@ -1351,6 +1353,55 @@ setInterval(() => {
     el.classList.toggle('low', left <= 10);
   }
 }, 250);
+
+// ─────────────────────────── Таймер хода: бомба слева на границе ───────────────────────────
+// 30 секунд на ход. Против бота время стоит, пока идут анимации; онлайн срок задаёт сервер.
+// Последние 10 секунд бомба пищит чаще и растёт, по истечении ход переходит сопернику.
+export const TURN_SEC = 30;
+function turnBombHTML() {
+  return `<div class="hs-turnbomb off" data-turnbomb role="timer" aria-label="Время на ход">
+    <i class="tb-ring"></i><img src="${esc(hImg(hcard('c4')))}" alt="" draggable="false"><b class="tb-led"></b></div>`;
+}
+let tbLast = Date.now(), tbBeep = 0, tbFiring = false;
+function turnTimerTick() {
+  const now = Date.now(), dt = now - tbLast; tbLast = now;
+  const el = document.querySelector<HTMLElement>('[data-turnbomb]');
+  const s = S.s;
+  let left: number | null = null, mine = false;
+  if (s && el && S.phase === 'play' && s.winner === null) {
+    if (S.on) {
+      if (S.on.deadline) { left = (S.on.deadline - net.serverNow()) / 1000; mine = s.turn === 0; }
+    } else if (!S.tut && s.turn === 0) {
+      const key = `${S.game}:${s.turnNo}`;
+      if (S.turnKey !== key) { S.turnKey = key; S.turnDl = now + TURN_SEC * 1000; tbBeep = 0; }
+      if (S.busy || document.hidden) S.turnDl += dt;   // анимации и свёрнутое окно не съедают время
+      left = (S.turnDl - now) / 1000; mine = true;
+    }
+  }
+  if (!el) return;
+  if (left === null) { el.className = 'hs-turnbomb off'; return; }
+  const sec = Math.max(0, Math.ceil(left));
+  el.className = `hs-turnbomb ${mine ? 'mine' : 'theirs'} ${sec <= 5 ? 'crit' : sec <= 10 ? 'warn' : ''}`;
+  el.style.setProperty('--p', String(Math.max(0, Math.min(1, left / TURN_SEC))));
+  el.querySelector('.tb-led')!.textContent = String(sec);
+  if (!mine) return;
+  // писк: раз в 2 с, на последних 10 с — каждую секунду, на последних 5 — дважды в секунду
+  const every = sec > 10 ? 2000 : sec > 5 ? 1000 : 500;
+  if (left > 0 && now - tbBeep >= every && !S.busy) { tbBeep = now; c4.timer(sec <= 10, sec <= 5); el.classList.add('beep'); setTimeout(() => el.classList.remove('beep'), 140); }
+  if (left <= 0 && !S.on && !tbFiring && myTurn()) void turnExpired();
+}
+async function turnExpired() {
+  tbFiring = true;
+  try {
+    if (drag) endDrag(false);
+    S.sel = null; S.info = null; S.showLog = false; resetPend();
+    fx.banner('Время вышло — ход сопернику', 'info', 1100);
+    const s = S.s!;
+    if (s.p[0].choice) await act({ k: 'choose', i: 0 }, 0);
+    if (S.s === s && myTurn()) await playerEndTurn();
+  } finally { tbFiring = false; }
+}
+setInterval(turnTimerTick, 125);
 
 const RADIO_KEYS: VoKey[] = ['go', 'enemyspotted', 'needbackup', 'takingfire', 'niceshot', 'clutch', 'enemydown'];
 function radioHTML() {

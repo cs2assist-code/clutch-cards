@@ -519,3 +519,27 @@ h4.sub { font-family: var(--font-title); color: var(--g1); letter-spacing: .12em
   box-shadow: 0 0 0 1.5px rgba(0,0,0,.55), 0 0 0 3px rgba(255,110,100,.7), 0 0 22px rgba(255,70,60,.3), inset 0 0 26px rgba(0,0,0,.45); }
 @keyframes zoneBreath { 0%, 100% { opacity: .55; } 50% { opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .hs .hs-board.zone::before, .hs .hs-board.placing::before { animation: none; } }
+
+/* Таймер хода: бомба C4 слева на центральной полосе */
+.hs-mid.has-tb { padding-left: 64px; }
+.hs-turnbomb { position: absolute; left: 6px; top: 50%; width: 54px; height: 42px; translate: 0 -50%; z-index: 4 !important;
+  display: grid; place-items: center; pointer-events: none; transition: scale .3s cubic-bezier(.3,1.6,.5,1), opacity .25s, filter .25s; --p: 1; }
+.hs-turnbomb img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; border-radius: 8px;
+  box-shadow: 0 0 0 1.5px #0b0805, 0 0 0 3px var(--tb-c, #b9893a), 0 4px 10px rgba(0,0,0,.7); filter: saturate(.85) brightness(.8); }
+.hs-turnbomb .tb-ring { position: absolute; inset: -5px; border-radius: 11px; z-index: 0;
+  background: conic-gradient(var(--tb-c, #e2b04a) calc(var(--p) * 360deg), rgba(0,0,0,.55) 0);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude; padding: 3px; }
+.hs-turnbomb .tb-led { position: relative; z-index: 1; min-width: 30px; padding: 1px 5px; border-radius: 4px; text-align: center;
+  font: 700 16px/1.1 'Courier New', ui-monospace, monospace; color: #ff4d3d; background: rgba(12,4,2,.9);
+  box-shadow: inset 0 0 0 1px #3a120c, 0 0 8px rgba(255,60,40,.35); text-shadow: 0 0 6px rgba(255,70,50,.9); font-variant-numeric: tabular-nums; }
+.hs-turnbomb.off { opacity: 0; scale: .7; }
+.hs-turnbomb.theirs { opacity: .7; filter: grayscale(.6); }
+.hs-turnbomb.theirs .tb-led { color: #c9ced6; text-shadow: none; }
+.hs-turnbomb.mine { --tb-c: #e2b04a; }
+.hs-turnbomb.mine.warn { --tb-c: #ff6b3d; scale: 1.25; }
+.hs-turnbomb.mine.crit { --tb-c: #ff2e2e; scale: 1.45; animation: tbShake .5s linear infinite; }
+.hs-turnbomb.mine.beep .tb-led { color: #fff2ec; box-shadow: inset 0 0 0 1px #ff6a50, 0 0 16px rgba(255,60,40,.9); }
+.hs-turnbomb.mine.beep img { filter: saturate(1) brightness(1.05); }
+@keyframes tbShake { 0%,100% { rotate: 0deg; } 25% { rotate: -4deg; } 75% { rotate: 4deg; } }
+@media (prefers-reduced-motion: reduce) { .hs-turnbomb.mine.crit { animation: none; } }
+.hs .hs-mid > .hs-turnbomb { position: absolute; z-index: 4; transform-origin: 2px 50%; }

@@ -171,6 +171,8 @@ export const c4 = {
   plant() { playSample('c4_plant', 0.6, () => sfx.beep()); setTimeout(() => playSample('c4_arm', 0.45), 350); },
   /** Писк таймера (fast — ближе к взрыву). */
   beep(fast = false) { playSample(fast ? 'c4_beep_fast' : 'c4_beep', 0.4, () => sfx.tick(fast)); },
+  /** Писк таймера хода: тихо, на последних 10 с громче, на последних 5 — быстрый писк. */
+  timer(warn = false, crit = false) { playSample(crit ? 'c4_beep_fast' : 'c4_beep', warn ? 0.38 : 0.2, () => sfx.tick(crit)); },
   /** Начало разминирования (щелчки кусачек). */
   defuseStart() { playSample('c4_defuse_start', 0.6); },
   /** Бомба обезврежена. */

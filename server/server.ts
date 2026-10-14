@@ -11,7 +11,7 @@
 //   BOT_TOKEN=...         токен бота — для проверки подписи Telegram initData (обязательно в бою)
 //   ALLOW_DEV=1           пускать без Telegram по имени (для локальной проверки; по умолчанию — только без BOT_TOKEN)
 //   DB=clutch-online.sqlite
-//   TURN_SEC=75 MULL_SEC=30 BAN_SEC=15 GRACE_SEC=60
+//   TURN_SEC=30 MULL_SEC=30 BAN_SEC=15 GRACE_SEC=60
 // Новый сезон: bun server/server.ts --new-season "Сезон 2"   (рейтинг сжимается к 1000 наполовину, счёт игр — с нуля)
 import { Database } from 'bun:sqlite';
 import type { ServerWebSocket } from 'bun';
@@ -29,7 +29,7 @@ const env = process.env;
 const PORT = Number(env.PORT ?? 8790);
 const BOT_TOKEN = env.BOT_TOKEN ?? '';
 const ALLOW_DEV = env.ALLOW_DEV ? env.ALLOW_DEV === '1' : !BOT_TOKEN;
-const TURN_MS = Number(env.TURN_SEC ?? 75) * 1000;
+const TURN_MS = Number(env.TURN_SEC ?? 30) * 1000;
 const MULL_MS = Number(env.MULL_SEC ?? 30) * 1000;
 const BAN_MS = Number(env.BAN_SEC ?? 15) * 1000;
 const GRACE_MS = Number(env.GRACE_SEC ?? 60) * 1000;
@@ -185,7 +185,7 @@ function doMull(r: Room, p: PI, uids: string[]) {
 function setDeadline(r: Room, ms: number, cb: () => void) {
   clearTimeout(r.timer);
   r.deadline = Date.now() + ms;
-  r.timer = setTimeout(cb, ms);
+  r.timer = setTimeout(cb, ms + 1500);   // +1,5 с на задержку сети: игрок видит ровно ms
 }
 /** Таймер хода: не успел — ход заканчивается сам (открытый выбор карты — первая карта). */
 function setTurnTimer(r: Room) {
