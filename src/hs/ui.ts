@@ -1,5 +1,5 @@
 // Интерфейс режима «Схватка»: настройка → замена карт → бой картами (Bo3, смена сторон).
-import { AGENTS, agent, boardImg, MAPS, mapDef } from '../game/cards';
+import { AGENTS, agent, backImg, boardImg, MAPS, mapDef } from '../game/cards';
 import type { Side } from '../game/types';
 import { agentArt, cssUrl, esc } from '../art';
 import * as fx from '../fx';
@@ -953,7 +953,8 @@ function boardHTML() {
   const n = me.hand.length;
   const ov = n > 1 ? Math.max(0, (n * 62 - Math.min(innerWidth - 24, 420)) / (n - 1)) : 0;
   const hand = me.hand.map((c, i) => handCardHTML(hcard(c.id), c.uid, i, n, myTurn() && !!playTargets(s, 0, c.id, !!c.free), !!c.free, costOf(s, c.id))).join('');
-  const backs = Array.from({ length: en.hand.length }, () => '<i></i>').join('');
+  const nb = en.hand.length;
+  const backs = Array.from({ length: nb }, (_, i) => { const k = i - (nb - 1) / 2; return `<i style="--r:${(k * 5).toFixed(1)}deg;--y:${(Math.abs(k) * 1.6).toFixed(1)}px"></i>`; }).join('');
   const mp = mapDef(S.map);
   return `<main class="hs has-art map-${S.map}" style="--map:url('${esc(cssUrl(mp.image))}');--art:url('${esc(cssUrl(boardImg(S.map)))}');${boardVars(S.map)}">
     ${boardScene(S.map)}
@@ -963,7 +964,7 @@ function boardHTML() {
       ${S.on ? `<span class="score on"><b>${esc(S.on.opp.name)}</b>${S.on.oppOnline ? '' : ` <i class="hs-off">не в сети <span class="hs-timer" data-dl="${S.on.graceUntil ?? 0}"></span></i>`}</span>`
         : `<span class="score"><b>Вы ${S.score[0]}</b><i>:</i><b>${S.score[1]} Бот</b></span>`}
     </header>
-    <div class="hs-backs">${backs}</div>
+    <div class="hs-backs" style="--back:url('${esc(cssUrl(backImg(other(mySide()))))}')">${backs}</div>
     ${heroHTML(1, tg)}
     <div class="hs-board b1 ${zoneCls('b1')}" style="--n:${HS.board}">${en.board.map((u) => unitHTML(u, 1, tg)).join('') || '<span class="hs-empty"></span>'}</div>
     <div class="hs-mid has-tb">${turnBombHTML()}${boardEmblem(S.map)}

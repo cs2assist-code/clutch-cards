@@ -543,3 +543,9 @@ h4.sub { font-family: var(--font-title); color: var(--g1); letter-spacing: .12em
 @keyframes tbShake { 0%,100% { rotate: 0deg; } 25% { rotate: -4deg; } 75% { rotate: 4deg; } }
 @media (prefers-reduced-motion: reduce) { .hs-turnbomb.mine.crit { animation: none; } }
 .hs .hs-mid > .hs-turnbomb { position: absolute; z-index: 4; transform-origin: 2px 50%; }
+
+/* Рука соперника: рубашки его стороны веером, выглядывают из-под шапки */
+.hs .hs-backs { height: 20px; position: relative; z-index: 1; }
+.hs .hs-backs ~ .hs-hero { position: relative; z-index: 2; }
+.hs .hs-backs i { width: 24px; height: 34px; margin: 0 -5px; border-radius: 3px; translate: 0 calc(6px - var(--y, 0px)); rotate: calc(var(--r, 0deg) * -1); transform-origin: 50% 0;
+  background: var(--back) center / cover no-repeat, #2a1d10; box-shadow: 0 0 0 1px rgba(0,0,0,.8), 0 3px 6px rgba(0,0,0,.6); }

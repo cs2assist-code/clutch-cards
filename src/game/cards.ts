@@ -242,6 +242,8 @@ export const agent = (id: string) => AGENTS.find((a) => a.id === id)!;
 export interface MapDef { id: string; name: string; perk: string; image: string }
 const mapImg = (id: string) => img(`map_${id}`);
 /** Нарисованный фон игрового стола (вид сверху, public/img/board_<id>.webp). */
+/** Рубашка карт стороны (public/img/back_t.webp, back_ct.webp). */
+export const backImg = (side: 'T' | 'CT') => img(`back_${side.toLowerCase()}`);
 export const boardImg = (id: string) => img(`board_${id}`);
 export const MAPS: MapDef[] = [
   { id: 'dust2', name: 'Dust II', perk: 'Длинные прострелы: снайперские винтовки +3 урона.', image: mapImg('dust2') },
