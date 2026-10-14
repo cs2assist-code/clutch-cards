@@ -1,0 +1,21 @@
+{
+  "name": "clutch-cards",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "predev": "node scripts/vo-index.mjs",
+    "dev": "vite --host",
+    "prebuild": "node scripts/vo-index.mjs",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview --host",
+    "simulate": "tsx scripts/hs-sim.ts 1000",
+    "server": "bun server/server.ts",
+    "server:test": "bun server/test-bots.ts"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0",
+    "vite": "^5.4.0"
+  }
+}

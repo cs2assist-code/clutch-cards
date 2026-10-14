@@ -1,0 +1,7 @@
+node_modules
+dist
+dist-standalone.html
+.check
+.standalone
+*.sqlite
+*.sqlite-*
