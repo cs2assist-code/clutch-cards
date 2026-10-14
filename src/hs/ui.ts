@@ -7,7 +7,7 @@ import { c4, preloadShots, sample, sfx, weaponShot } from '../sound';
 import { preloadVoice, say, setSubtitle, type VoKey } from '../voice';
 import { track } from '../analytics';
 import { recordRound, recordRoundsMatch, markTutorialDone } from '../stats';
-import { CLASS_RU, HCARDS, hcard, hImg, KW_RU, MAP_RULES, matchup, POWERS, sigCards, STYLE_BEATS, STYLE_RU, styleOf, type HCard, type KW, type Style } from './cards';
+import { CLASS_RU, HCARDS, hcard, hImg, unitArt, KW_RU, MAP_RULES, matchup, POWERS, sigCards, STYLE_BEATS, STYLE_RU, styleOf, type HCard, type KW, type Style } from './cards';
 import {
   attackTargets, attackBonus, canAttack, canSave, canShop, costOf, isClutch, isCovered, shopPrice, isBehind, lossBonus, maxHp, endTurn, findUnit, heroId, HS, incomeOf, mulligan, newGame, playTargets, powerTargets, startGame,
   type Diff, type Ev, type HState, type HUnit, type PI,
@@ -207,7 +207,7 @@ async function act(a: Action, p: PI) {
 async function showCast(id: string) {
   const el = document.createElement('div');
   el.className = 'hs-cast';
-  el.innerHTML = bigCardHTML(hcard(id));
+  el.innerHTML = bigCardHTML(hcard(id), undefined, S.s ? S.s.p[1].hero.side : other(mySide()));
   document.body.appendChild(el);
   await wait(750);
   el.remove();
@@ -793,7 +793,8 @@ function unitHTML(u: HUnit, p: PI, tg: Set<string>) {
   const c = hcard(u.card);
   const side = c.side === 'N' ? s.p[p].hero.side : c.side;
   const ready = p === 0 && myTurn() && canAttack(s, 0, u.uid) && attackTargets(s, 0, u.uid).length > 0;
-  const cls = ['hu', `f-${side}`, `c-${u.card}`,
+  const art = unitArt(c, s.p[p].hero.side);
+  const cls = ['hu', `f-${side}`, `c-${u.card}`, art ? 'art' : '',
     u.kw.includes('taunt') ? 'taunt' : '', u.kw.includes('stealth') ? 'stealth' : '', u.blind ? 'blind' : '', u.kw.includes('vet') ? 'vet' : '',
     u.burn ? 'burn' : '', ready ? 'ready' : '', u.marked ? 'marked' : '', tg.has(u.uid) ? 'tgt' : '', S.sel?.k === 'atk' && S.sel.id === u.uid ? 'picked' : '',
     S.info === u.uid ? 'inspect' : '', c.kind === 'bomb' ? 'bomb' : ''].filter(Boolean).join(' ');
@@ -805,7 +806,7 @@ function unitHTML(u: HUnit, p: PI, tg: Set<string>) {
   const clutch = c.kind !== 'bomb' && isClutch(s, p);
   const blink = c.kind === 'bomb' ? ` style="--blink:${[0.25, 0.25, 0.45, 0.8][Math.min(u.bomb ?? 3, 3)]}s"` : '';
   return `<button class="${cls}" data-act="hs-ent" data-hid="${u.uid}"${blink}>
-    <span class="hu-art"><img src="${esc(hImg(c))}" alt="" decoding="async"></span>
+    ${art ? `<span class="hu-art full"><img src="${esc(art)}" alt="" decoding="async"></span>` : `<span class="hu-art"><img src="${esc(hImg(c))}" alt="" decoding="async"></span>`}
     ${kwChips(u)}${u.armor ? `<b class="hu-arm">${u.armor}</b>` : ''}${u.kw.includes('vet') ? '<b class="hu-vet">★</b>' : ''}${bonus ? `<em class="hu-bonus">+${bonus}</em>` : ''}${u.marked ? '<em class="hu-tag trade">трейд +2</em>' : clutch ? '<em class="hu-tag clutch">клатч</em>' : ''}${covered ? '<i class="hu-cov" title="За укрытием: снайперы не достанут"></i>' : ''}
     ${c.kind === 'bomb' ? `<b class="hu-timer">${u.bomb}</b>` : `<b class="hu-atk ${u.atk > (c.atk ?? 0) ? 'up' : ''}"><i>${u.atk}</i></b>`}
     <b class="hu-hp ${u.hp < u.maxHp ? 'dmg' : u.maxHp > base ? 'up' : ''}"><i>${u.hp}</i></b>
@@ -865,16 +866,17 @@ const TYPE_ICON: Partial<Record<HCard['cls'], string>> = {
 };
 const TYPE_ICON_SVG = (k: HCard['cls']) => `<svg viewBox="0 0 24 24" aria-hidden="true">${TYPE_ICON[k] ?? TYPE_ICON.spell}</svg>`;
 const typeIcon = (c: HCard) => `<svg viewBox="0 0 24 24" aria-hidden="true">${TYPE_ICON[c.cls] ?? TYPE_ICON.spell}</svg>`;
-function cardFace(c: HCard, free = false, cost = c.cost) {
+function cardFace(c: HCard, free = false, cost = c.cost, side: Side = mySide()) {
+  const art = unitArt(c, side);
   return `<span class="hc-plate"></span>
-    <span class="hc-art"><img src="${esc(hImg(c))}" alt="" decoding="async"></span>
+    ${art ? `<span class="hc-full"><img src="${esc(art)}" alt="" decoding="async"></span>` : `<span class="hc-art"><img src="${esc(hImg(c))}" alt="" decoding="async"></span>`}
     <span class="hc-ribbon"><span class="hc-name">${esc(c.name)}</span></span>
     <span class="hc-type">${typeIcon(c)}</span>
     <span class="hc-cost ${free ? 'free' : ''} ${cost < c.cost ? 'cheap' : ''}"><i>${free ? '0' : cost ? (cost / 1000).toLocaleString('ru-RU') : '0'}</i></span>${free ? '<span class="hc-trophy">трофей</span>' : ''}${c.modes ? '<span class="hc-modes">⇄</span>' : ''}
     ${c.kind === 'unit' ? `<b class="hc-atk"><i>${c.atk}</i></b><b class="hc-hp"><i>${c.hp}</i></b>` : c.kind === 'bomb' ? `<b class="hc-hp"><i>${c.hp}</i></b>` : ''}`;
 }
 function kwLines(kw: KW[]) { return kw.filter((k) => k !== 'vet').map((k) => `<li><b>${KW_RU[k][0]}.</b> ${KW_RU[k][1]}</li>`).join(''); }
-function bigCardHTML(c: HCard, u?: HUnit) {
+function bigCardHTML(c: HCard, u?: HUnit, side: Side = mySide()) {
   const kw = u ? u.kw : c.kw ?? [];
   const extra: string[] = [];
   if (u?.blind) extra.push('<li><b>Ослеплён.</b> Пропустит следующую атаку и не ответит на выстрел.</li>');
@@ -889,7 +891,7 @@ function bigCardHTML(c: HCard, u?: HUnit) {
   if (u?.marked) extra.push('<li><b>Трейд.</b> Убил бойца соперника — по нему +2 урона до конца хода мстителя.</li>');
   if (c.modes && !u) extra.push(`<li><b>Режим на выбор:</b> ${c.modes.map((m) => `${esc(m.name)} (${esc(m.text)})`).join(' или ')}.</li>`);
   return `<div class="hcb f-${c.side}">
-    <div class="hc big">${cardFace(c)}</div>
+    <div class="hc big">${cardFace(c, false, c.cost, side)}</div>
     <div class="hcb-txt"><b>${esc(c.name)}</b><small>${money(c.cost)} · ${c.kind === 'spell' ? 'действие' : c.kind === 'bomb' ? 'бомба' : c.kind === 'trap' ? 'засада' : clsRu(c.cls)}${u?.kw.includes('vet') ? ' · ★ ветеран' : ''}</small>
       ${c.text ? `<p>${esc(c.text)}</p>` : ''}<ul>${kwLines(kw)}${extra.join('')}</ul></div></div>`;
 }
@@ -940,7 +942,7 @@ function infoHTML(): string {
   const f = findUnit(s, id);
   if (!f) return '';
   const sv = f.p === 0 && myTurn() && canSave(s, 0, id) ? `<div class="hs-pvbtns"><button class="ghost sm" data-act="hs-save" data-id="${id}">Сейв: вернуть в руку</button></div>` : '';
-  return `<div class="hs-pv"><div data-act="hs-cancel">${bigCardHTML(hcard(f.u.card), f.u)}</div>${sv}</div>`;
+  return `<div class="hs-pv"><div data-act="hs-cancel">${bigCardHTML(hcard(f.u.card), f.u, s.p[f.p].hero.side)}</div>${sv}</div>`;
 }
 
 function boardHTML() {

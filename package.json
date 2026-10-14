@@ -4,9 +4,9 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "predev": "node scripts/vo-index.mjs",
+    "predev": "node scripts/vo-index.mjs && node scripts/art-index.mjs",
     "dev": "vite --host",
-    "prebuild": "node scripts/vo-index.mjs",
+    "prebuild": "node scripts/vo-index.mjs && node scripts/art-index.mjs",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview --host",
     "simulate": "tsx scripts/hs-sim.ts 1000",

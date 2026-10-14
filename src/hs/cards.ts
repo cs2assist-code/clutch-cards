@@ -1,3 +1,4 @@
+import { UNIT_ART } from './art-index';
 // Карты режима «Схватка» (по образцу Hearthstone): без рядов, деньги вместо маны.
 // Главная идея: у каждого класса оружия есть сильные и слабые стороны (см. COUNTER),
 // а у каждого агента — свой арсенал и две фирменные карты.
@@ -185,6 +186,13 @@ const BY_ID = new Map(HCARDS.map((c) => [c.id, c]));
 export const hcard = (id: string): HCard => BY_ID.get(id) ?? HCARDS[0];
 
 /** Картинка карты: из классического режима или портрет агента. */
+/** Портрет бойца с оружием для стороны (u_t_ak47.webp). Нейтральное оружие — по стороне владельца. Нет картинки — null. */
+export function unitArt(c: HCard, owner: 'T' | 'CT'): string | null {
+  if (c.kind !== 'unit') return null;
+  const key = `${(c.side === 'N' ? owner : c.side).toLowerCase()}_${c.id}`;
+  if (!UNIT_ART.has(key)) return null;
+  return (globalThis as { __CARD_IMG?: Record<string, string> }).__CARD_IMG?.[`u_${key}`] ?? `img/u_${key}.webp`;
+}
 export function hImg(c: HCard): string {
   const pre = (globalThis as { __CARD_IMG?: Record<string, string> }).__CARD_IMG?.[c.img];
   return CARDS.find((x) => x.id === c.img)?.image ?? pre ?? `img/${c.img}.webp`;

@@ -2,6 +2,7 @@
 # Сборка одного HTML-файла без npm (через bun) — для быстрого демо.
 set -e
 cd "$(dirname "$0")/.."
+(command -v node >/dev/null && node scripts/art-index.mjs || bun scripts/art-index.mjs) >/dev/null
 rm -rf .standalone && bun build src/main.ts --outdir .standalone --minify --target browser >/dev/null
 python3 - <<'PY'
 import pathlib, re
