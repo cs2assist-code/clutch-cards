@@ -1,2 +1,2 @@
 // Создаётся scripts/art-index.mjs — не править руками.
-export const UNIT_ART = new Set<string>(["ct_famas","ct_fiveseven","ct_mp5sd","ct_p2000","ct_usp","t_ak47","t_g3sg1","t_galil","t_glock","t_mac10","t_negev","t_p90","t_sawedoff","t_sg553","t_tec9"]);
+export const UNIT_ART = new Set<string>(["ct_aug","ct_cz75","ct_famas","ct_fiveseven","ct_m249","ct_m4a1s","ct_m4a4","ct_mag7","ct_mp5sd","ct_mp9","ct_p2000","ct_scar20","ct_usp","t_ak47","t_g3sg1","t_galil","t_glock","t_mac10","t_negev","t_p90","t_sawedoff","t_sg553","t_tec9"]);
