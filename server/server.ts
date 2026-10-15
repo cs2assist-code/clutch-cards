@@ -142,7 +142,7 @@ function createRoom(a: Omit<Seat, 'mullDone'>, b: Omit<Seat, 'mullDone'>, ranked
   knifeRound(r);
 }
 
-// ── Ножевой раунд: «Удар · Блок · Финт» (src/hs/knife.ts). Победитель выбирает сторону, проигравший первым банит карту ──
+// ── Ножевой раунд: «Нож · Щит · Zeus» (src/hs/knife.ts). Победитель выбирает сторону, проигравший первым банит карту ──
 function knifeMsg(r: Room, p: PI, reveal?: KnifeRound): S2C {
   const k = knifeFor(r.knife, p);
   const w = r.knife.winner;

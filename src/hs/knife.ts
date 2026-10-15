@@ -1,16 +1,16 @@
 // Ножевой раунд перед матчем: кто выиграет — выбирает сторону (T или CT), дальше одна партия.
-// Простая дуэль «Удар · Блок · Финт»: оба тайно выбирают приём, потом открывают.
-//   Удар бьёт Финт, Финт обходит Блок, Блок отражает Удар; одинаковые — ничья, переигрываем.
+// Дуэль «Нож · Щит · Zeus»: оба тайно выбирают приём, потом открывают.
+//   Нож бьёт Zeus, Zeus бьёт Щит, Щит бьёт Нож; одинаковые — ничья, переигрываем.
 // У каждого 3 жизни. Победа приёмом — 1 урон, а своим «коньком» (он виден обоим) — 2.
 // Конёк даёт глубину: его выгодно играть, но соперник это знает и может поймать.
 // Модуль общий для игры с ботом и для сервера онлайна.
 
-export type Move = 'strike' | 'block' | 'feint';
+export type Move = 'knife' | 'shield' | 'zeus';
 export type KP = 0 | 1;
-export const MOVES: Move[] = ['strike', 'block', 'feint'];
-export const MOVE_RU: Record<Move, string> = { strike: 'Удар', block: 'Блок', feint: 'Финт' };
+export const MOVES: Move[] = ['knife', 'shield', 'zeus'];
+export const MOVE_RU: Record<Move, string> = { knife: 'Нож', shield: 'Щит', zeus: 'Zeus' };
 /** Кого бьёт приём. */
-export const BEATS: Record<Move, Move> = { strike: 'feint', feint: 'block', block: 'strike' };
+export const BEATS: Record<Move, Move> = { knife: 'zeus', zeus: 'shield', shield: 'knife' };
 export const KNIFE_HP = 3;
 
 export interface KnifeRound { picks: [Move, Move]; winner: KP | null; dmg: number }
@@ -28,7 +28,7 @@ export function newKnife(rnd: () => number = Math.random): KnifeState {
   return { hp: [KNIFE_HP, KNIFE_HP], fav: [pick(), pick()], round: 1, rounds: [], winner: null };
 }
 
-export const isMove = (m: unknown): m is Move => m === 'strike' || m === 'block' || m === 'feint';
+export const isMove = (m: unknown): m is Move => m === 'knife' || m === 'shield' || m === 'zeus';
 
 /** Открыть приёмы обоих. Меняет состояние и возвращает итог раунда. */
 export function resolveKnife(k: KnifeState, a: Move, b: Move): KnifeRound {

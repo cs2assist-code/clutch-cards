@@ -262,3 +262,6 @@ h4.sub, .sub { font: 600 11px var(--font-body) !important; letter-spacing: .18em
 .kn-side small { font-size: 11.5px; line-height: 1.35; color: #c2c9d2; }
 .kn-side:hover { background: var(--cs-panel-hi); }
 @media (prefers-reduced-motion: reduce) { .kn-card, .kn-p.hurt { animation: none; } }
+.kn-move .kn-ic.sil { width: 52px; height: 30px; }
+.kn-move .kn-ic.sil.tall, .kn-card .kn-ic.sil.tall { width: 26px; }
+.kn-card .kn-ic.sil { width: 38px; height: 20px; }

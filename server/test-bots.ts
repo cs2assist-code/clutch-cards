@@ -38,7 +38,7 @@ function bot(name: string, idx: number, onCode?: (c: string) => void, joinCode?:
         case 'duel_code': onCode?.(m.code); break;
         case 'knife':
           if (m.pick === 'me') tx({ t: 'side', side: Math.random() < 0.5 ? 'T' : 'CT' });
-          else if (!m.picked && m.k.winner === null) setTimeout(() => tx({ t: 'knife', move: (['strike', 'block', 'feint'] as const)[Math.floor(Math.random() * 3)] }), 30);
+          else if (!m.picked && m.k.winner === null) setTimeout(() => tx({ t: 'knife', move: (['knife', 'shield', 'zeus'] as const)[Math.floor(Math.random() * 3)] }), 30);
           knifeMsgs++; break;
         case 'veto': if (m.myTurn) { const left = m.maps.filter((x) => !m.banned.some((b) => b.map === x)); tx({ t: 'ban', map: left[0] }); } break;
         case 'start': view = m.view; tx({ t: 'mull', uids: [] }); break;

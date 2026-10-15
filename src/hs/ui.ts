@@ -561,7 +561,7 @@ async function knifePick(m: Move) {
   if (kn.online) { net.send({ t: 'knife', move: m }); sfx.click(); hooks.render(); return; }
   const r = resolveKnife(kn.k, m, botKnifeMove(kn.k, 1));
   kn.reveal = r;
-  weaponShot('knife', 'knife');
+  knifeSound(r);
   if (r.winner === 0) haptic.win(); else if (r.winner === 1) haptic.deny();
   hooks.render();
   await wait(1500);
@@ -575,10 +575,15 @@ async function knifePick(m: Move) {
   hooks.render();
 }
 const MOVE_ICON: Record<Move, () => string> = {
-  strike: () => silHTML('knife', 'sil kn-ic') || '🔪',
-  block: () => '<svg class="kn-ic" viewBox="0 0 24 24"><path d="M12 2l8 3v6c0 5-3.4 9.2-8 11-4.6-1.8-8-6-8-11V5z" fill="currentColor"/></svg>',
-  feint: () => '<svg class="kn-ic" viewBox="0 0 24 24"><path d="M3 17l5-6 4 4 6-8M14 7h4v4" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  knife: () => silHTML('knife', 'sil kn-ic') || '🔪',
+  shield: () => silHTML('shield', 'sil kn-ic tall') || '<svg class="kn-ic" viewBox="0 0 24 24"><path d="M12 2l8 3v6c0 5-3.4 9.2-8 11-4.6-1.8-8-6-8-11V5z" fill="currentColor"/></svg>',
+  zeus: () => silHTML('zeus', 'sil kn-ic') || '⚡',
 };
+/** Звук приёма победителя (ничья — звук ножа). */
+function knifeSound(r: KnifeRound) {
+  const m = r.winner === null ? 'knife' : r.picks[r.winner];
+  if (m === 'zeus') weaponShot('zeus', 'knife'); else if (m === 'shield') { sfx.click(); weaponShot('knife', 'knife'); } else weaponShot('knife', 'knife');
+}
 function knifeHTML(): string {
   if (!S.knife) return `<main class="kn rm"><header class="rm-head"><span></span><span class="rm-title">Ножевой раунд</span><span></span></header><p class="note">Соединяемся…</p></main>`;
   const kn = S.knife, k = kn.k, rv = kn.reveal, ol = kn.online;
@@ -610,7 +615,7 @@ function knifeHTML(): string {
       <button class="primary big-btn" data-act="hs-knife-go">В бой за ${mine}</button>`;
   } else {
     bottom = `<div class="kn-moves">${MOVES.map((m) => `<button class="kn-move ${kn.pick === m ? 'on' : ''} ${k.fav[0] === m ? 'fav' : ''}" data-act="hs-knife" data-v="${m}" ${kn.pick ? 'disabled' : ''}>
-        ${MOVE_ICON[m]()}<b>${MOVE_RU[m]}</b><small>бьёт «${MOVE_RU[BEATS[m]]}»</small>${k.fav[0] === m ? '<em>×2</em>' : ''}</button>`).join('')}</div>
+        ${MOVE_ICON[m]()}<b>${MOVE_RU[m]}</b><small>бьёт ${MOVE_RU[BEATS[m]]}</small>${k.fav[0] === m ? '<em>×2</em>' : ''}</button>`).join('')}</div>
       ${ol ? `<p class="note kn-rules">${kn.pick ? (ol.oppPicked ? 'Открываем…' : `Ждём ${opp}…`) : ol.oppPicked ? `${opp} уже выбрал — ваш ход` : 'Выбирайте приём'}${timer}</p>` : ''}
       <p class="note kn-rules">Тайно выберите приём, ${ol ? 'соперник' : 'бот'} выбирает одновременно. Победа — 1 урон, победа своим коньком — 2. У кого кончатся жизни — проиграл ножи.</p>`;
   }
@@ -1415,7 +1420,7 @@ async function onNet(m: S2C) {
       S.on.deadline = m.deadline;
       if (m.reveal) {
         kn.reveal = m.reveal; kn.pick = null;
-        weaponShot('knife', 'knife');
+        knifeSound(m.reveal);
         if (m.reveal.winner === 0) haptic.win(); else if (m.reveal.winner === 1) haptic.deny();
         S.phase = 'knife';
         hooks.render();
