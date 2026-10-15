@@ -1,0 +1,17 @@
+{
+  "_comment": "Скопируйте в server/prizes.json и впишите свои призы. ends — дата конца сезона, minGames — сколько рейтинговых матчей нужно сыграть, чтобы попасть в призовую зону. image — необязательная https-ссылка на картинку скина.",
+  "ends": "2026-12-31",
+  "minGames": 20,
+  "prizes": [
+    { "place": 1, "skin": "AK-47 | Redline", "wear": "Field-Tested", "rarity": "classified" },
+    { "place": 2, "skin": "AWP | Atheris", "wear": "Field-Tested", "rarity": "restricted" },
+    { "place": 3, "skin": "M4A1-S | Decimator", "wear": "Field-Tested", "rarity": "classified" },
+    { "place": 4, "skin": "Desert Eagle | Mecha Industries", "wear": "Field-Tested", "rarity": "restricted" },
+    { "place": 5, "skin": "USP-S | Cortex", "wear": "Field-Tested", "rarity": "restricted" },
+    { "place": 6, "skin": "Glock-18 | Water Elemental", "wear": "Field-Tested", "rarity": "restricted" },
+    { "place": 7, "skin": "AK-47 | Elite Build", "wear": "Field-Tested", "rarity": "milspec" },
+    { "place": 8, "skin": "P250 | Asiimov", "wear": "Field-Tested", "rarity": "restricted" },
+    { "place": 9, "skin": "MP9 | Hydra", "wear": "Field-Tested", "rarity": "classified" },
+    { "place": 10, "skin": "FAMAS | Commemoration", "wear": "Field-Tested", "rarity": "restricted" }
+  ]
+}

@@ -17,7 +17,7 @@ import {
 import { apply, botMulligan, botStep, legalActions, type Action } from './ai';
 import { boardEmblem, boardScene, boardVars } from './boards';
 import * as net from '../online/client';
-import { LEVELS, levelOf, type HistRow, type PeerRow, type PlayerInfo, type S2C } from '../online/protocol';
+import { LEVELS, levelOf, prizePlaces, type HistRow, type PeerRow, type PlayerInfo, type S2C, type SeasonPrizes } from '../online/protocol';
 import { haptic } from '../telegram';
 import { questBump, type QuestDef, type QuestKind } from '../quests';
 import { shareResult } from '../share';
@@ -50,7 +50,7 @@ const S = {
   last: '',
   /** Онлайн-матч (null — игра с ботом). */
   on: null as null | OnlineMatch,
-  lobby: { me: null as PlayerInfo | null, season: '', queued: false, qsize: 0, range: null as null | { lo: number; hi: number; since: number }, history: null as HistRow[] | null, duel: null as string | null, err: '', top: [] as { name: string; rating: number; games: number; wins: number; league: string }[], pendingJoin: null as string | null, copied: false,
+  lobby: { me: null as PlayerInfo | null, season: '', queued: false, qsize: 0, range: null as null | { lo: number; hi: number; since: number }, history: null as HistRow[] | null, duel: null as string | null, err: '', top: [] as { id?: string; name: string; rating: number; games: number; wins: number; league: string }[], prizes: undefined as SeasonPrizes | undefined, pendingJoin: null as string | null, copied: false,
     friends: null as PeerRow[] | null, recent: [] as PeerRow[], player: null as Extract<S2C, { t: 'player' }> | null, playerFrom: 'rating' as Phase,
     invite: null as null | { code: string; from: { id: string; name: string; rating: number } }, invNote: '', rematch: '' as '' | 'wait' | 'offer' | 'gone' },
   radioOpen: false,
@@ -1446,7 +1446,7 @@ async function onNet(m: S2C) {
       if (m.state === 'offer') { haptic.win(); sfx.turn(); }
       break;
     case 'err': L.err = m.msg; L.queued = false; if (S.phase !== 'lobby') fx.banner(m.msg, 'info', 1400); break;
-    case 'top': L.top = m.rows; L.season = m.season; break;
+    case 'top': L.top = m.rows; L.season = m.season; L.prizes = m.prizes; break;
     case 'found':
       L.queued = false; L.duel = null; L.err = ''; L.invite = null; L.invNote = ''; L.rematch = '';
       S.on = { ranked: m.ranked, opp: m.opp, side: 'T', myAgent: '', oppAgent: '', deadline: 0, oppOnline: true, mullSent: false, confirmResign: false };
@@ -1718,14 +1718,59 @@ function ratingHTML(): string {
     : histList(hist, true);
   const myLv = me ? levelOf(me.rating).level : 0;
   const levels = `<div class="rt-levels">${LEVELS.map((x) => `<div class="${x.level === myLv ? 'on' : ''}">${levelBadge(x.min, 'xs')}<span>${x.max === Infinity ? `${x.min}+` : `${x.min}–${x.max}`}</span></div>`).join('')}</div>`;
-  const top = L.top.length ? `<ol class="ol-top">${L.top.slice(0, 10).map((r) => `<li>${levelBadge(r.rating, 'xs')}<b>${esc(r.name)}</b><span>${r.rating}</span><small>${r.wins} побед из ${r.games}</small></li>`).join('')}</ol>` : '';
+  const top = L.top.length ? topList(L.top.slice(0, 15)) : '';
   return `<main class="rm scroll ol rt">${head}${card}
     ${me ? friendsHTML() : ''}
     ${me ? `<h4 class="sub">Последние матчи</h4>${hHTML}` : ''}
     <h4 class="sub">Уровни</h4>${levels}
     <p class="note">Все начинают с 1000 Elo — это 4 уровень. Победа над равным соперником даёт около +25, поражение — около −25; победить сильного выгоднее, проиграть слабому — дороже. Подбор ищет соперника в пределах ±100 Elo и, пока вы ждёте, расширяет окно до ±350.</p>
+    ${prizesHTML()}
     ${top ? `<h4 class="sub">Топ сезона</h4>${top}` : ''}
   </main>`;
+}
+
+// ── Призы сезона: скины CS2 за 1–10 места ──
+const RARITY: Record<string, [string, string]> = {
+  consumer: ['#b0c3d9', 'Ширпотреб'], industrial: ['#5e98d9', 'Промышленное'], milspec: ['#4b69ff', 'Армейское'], restricted: ['#8847ff', 'Запрещённое'],
+  classified: ['#d32ce6', 'Засекреченное'], covert: ['#eb4b4b', 'Тайное'], contraband: ['#e4ae39', 'Контрабанда'], knife: ['#e4ae39', '★ Нож'],
+};
+const plural = (n: number, one: string, few: string, many: string) => { const a = n % 100, b = n % 10; return a > 10 && a < 20 ? many : b === 1 ? one : b >= 2 && b <= 4 ? few : many; };
+const rarityColor = (r?: string) => (r && RARITY[r]?.[0]) || '#b0c3d9';
+function topList(rows: typeof S.lobby.top) {
+  const pz = S.lobby.prizes, places = pz ? prizePlaces(rows, pz.minGames) : new Map<(typeof rows)[number], number>();
+  const meId = S.lobby.me?.id;
+  return `<ol class="ol-top">${rows.map((r) => {
+    const place = places.get(r), prize = place ? pz!.prizes.find((x) => x.place === place) : undefined;
+    return `<li class="${prize ? 'prz' : ''} ${r.id && r.id === meId ? 'me' : ''}" ${r.id ? `data-act="hs-player" data-id="${esc(r.id)}"` : ''} style="--rc:${rarityColor(prize?.rarity)}">
+      ${levelBadge(r.rating, 'xs')}<b>${esc(r.name)}</b><span>${r.rating}</span>
+      <small>${r.wins} побед из ${r.games}${pz && !place && r.games < pz.minGames ? ` · нужно ${pz.minGames} матчей` : ''}</small>
+      ${prize ? `<i class="tp-prize" title="${esc(prize.skin)}">🎁 ${esc(prize.skin)}</i>` : ''}</li>`;
+  }).join('')}</ol>`;
+}
+function prizesHTML() {
+  const pz = S.lobby.prizes, me = S.lobby.me;
+  if (!pz?.prizes.length) return '';
+  const days = pz.ends ? Math.ceil((pz.ends - Date.now()) / 86_400_000) : null;
+  const myPlace = me ? [...prizePlaces(S.lobby.top, pz.minGames)].find(([r]) => r.id === me.id)?.[1] : undefined;
+  let status = '';
+  if (me) {
+    if (myPlace) status = `Вы на <b>${myPlace}</b> месте — в призовой зоне!`;
+    else if (me.games < pz.minGames) status = `Чтобы бороться за призы, сыграйте ещё <b>${pz.minGames - me.games}</b> рейтинговых матчей`;
+    else {
+      const elig = S.lobby.top.filter((r) => r.games >= pz.minGames);
+      const tenth = elig[9];
+      status = tenth ? `До призовой зоны: <b>${Math.max(1, tenth.rating - me.rating + 1)}</b> Elo` : 'Призовая зона ещё не заполнена — успейте попасть в десятку';
+    }
+  }
+  return `<h4 class="sub">Призы сезона</h4>
+    <section class="pz">
+      <p class="pz-head">Топ-10 сезона получают скины CS2${days !== null ? ` · ${days > 0 ? `до конца ${days} ${plural(days, 'день', 'дня', 'дней')}` : 'сезон завершается'}` : ''}</p>
+      <div class="pz-row">${pz.prizes.map((p) => `<div class="pz-i" style="--rc:${rarityColor(p.rarity)}"><em>${p.place}</em>
+        ${p.image ? `<img src="${esc(p.image)}" alt="" loading="lazy" referrerpolicy="no-referrer">` : '<i class="pz-ic">🎁</i>'}
+        <b>${esc(p.skin)}</b><small>${esc([p.wear, RARITY[p.rarity ?? '']?.[1]].filter(Boolean).join(' · '))}</small></div>`).join('')}</div>
+      ${status ? `<p class="pz-me">${status}</p>` : ''}
+      <p class="note">В зачёт идут игроки, сыгравшие не меньше ${pz.minGames} рейтинговых матчей за сезон. Места фиксируются в момент окончания сезона.</p>
+    </section>`;
 }
 
 function histList(hist: HistRow[], link: boolean) {
@@ -1807,7 +1852,7 @@ function topHTML() {
   const L = S.lobby;
   return `<main class="rm scroll ol">
     <header class="rm-head"><button class="ghost sm" data-act="hs-lobby">← Онлайн</button><span class="rm-title">Топ · ${esc(L.season)}</span><span></span></header>
-    ${L.top.length ? `<ol class="ol-top">${L.top.map((r) => `<li>${levelBadge(r.rating, 'xs')}<b>${esc(r.name)}</b><span>${r.rating}</span><small>${r.wins} побед из ${r.games}</small></li>`).join('')}</ol>` : '<p class="note">Пока никто не сыграл в этом сезоне.</p>'}
+    ${prizesHTML()}${L.top.length ? topList(L.top) : '<p class="note">Пока никто не сыграл в этом сезоне.</p>'}
   </main>`;
 }
 

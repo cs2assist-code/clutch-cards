@@ -334,3 +334,20 @@ h4.sub, .sub { font: 600 11px var(--font-body) !important; letter-spacing: .18em
 @keyframes invIn { from { transform: translateY(-20px); opacity: 0; } }
 .big-btn.pulse { animation: rmPulse 1s ease-in-out infinite; }
 @keyframes rmPulse { 50% { box-shadow: 0 0 0 4px rgba(232,163,61,.35); } }
+
+/* ── Призы сезона ── */
+.pz { background: linear-gradient(180deg, rgba(232,163,61,.10), rgba(0,0,0,0)); border: 1px solid rgba(232,163,61,.35); border-radius: 8px; padding: 10px; margin-bottom: 10px; }
+.pz-head { margin: 0 0 8px; font-weight: 700; color: #f0c06a; font-size: 13px; }
+.pz-row { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 6px; scroll-snap-type: x mandatory; }
+.pz-i { flex: 0 0 104px; scroll-snap-align: start; position: relative; background: #12161c; border-radius: 6px; border-bottom: 3px solid var(--rc); padding: 22px 6px 6px; display: flex; flex-direction: column; align-items: center; text-align: center; gap: 2px;
+  background-image: radial-gradient(circle at 50% 35%, color-mix(in srgb, var(--rc) 30%, transparent), transparent 70%); }
+.pz-i em { position: absolute; left: 6px; top: 4px; font-style: normal; font-weight: 800; font-size: 13px; color: #fff; }
+.pz-i:nth-child(1) em { color: #ffd34d; } .pz-i:nth-child(2) em { color: #d9dde3; } .pz-i:nth-child(3) em { color: #d58b4a; }
+.pz-i img { width: 88px; height: 58px; object-fit: contain; }
+.pz-ic { font-size: 30px; height: 58px; display: grid; place-items: center; font-style: normal; }
+.pz-i b { font-size: 11px; line-height: 1.2; } .pz-i small { font-size: 10px; opacity: .6; }
+.pz-me { margin: 6px 0 2px; font-size: 13px; } .pz-me b { color: #f0c06a; }
+.ol-top li[data-act] { cursor: pointer; }
+.ol-top li.prz { box-shadow: inset 3px 0 0 var(--rc); }
+.ol-top li.me { outline: 1px solid rgba(232,163,61,.6); }
+.ol-top .tp-prize { grid-column: 3 / -1; grid-row: 3; font-style: normal; font-size: 11px; color: var(--rc); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

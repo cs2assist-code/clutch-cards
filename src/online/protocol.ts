@@ -28,6 +28,15 @@ export const leagueOf = (r: number) => { const l = levelOf(r); return { ...l, na
 
 /** Строка истории рейтинговых матчей (для профиля). */
 export interface HistRow { at: number; win: boolean; delta: number; after: number; opp: string; oppId: string; oppRating: number; map: string; reason: string }
+/** Призы сезона: скины CS2 за 1–10 места (настраиваются в server/prizes.json). */
+export interface Prize { place: number; skin: string; wear?: string; rarity?: string; image?: string; price?: string }
+export interface SeasonPrizes { ends?: number; minGames: number; prizes: Prize[] }
+/** Места с призами: только игроки, сыгравшие не меньше minGames матчей; по порядку рейтинга. */
+export function prizePlaces<T extends { games: number }>(rows: T[], minGames: number): Map<T, number> {
+  const m = new Map<T, number>(); let place = 0;
+  for (const r of rows) { if (r.games >= minGames && place < 10) m.set(r, ++place); }
+  return m;
+}
 /** Игрок в списках друзей и недавних соперников. */
 export interface PeerRow { id: string; name: string; rating: number; games: number; online: boolean; inGame: boolean; friend: boolean; at?: number; win?: boolean }
 
@@ -82,7 +91,7 @@ export type S2C =
   | { t: 'invited'; code: string; from: { id: string; name: string; rating: number } }
   | { t: 'invite_status'; state: 'sent' | 'declined' | 'offline' | 'busy' | 'expired'; name: string }
   | { t: 'rematch'; state: 'wait' | 'offer' | 'gone' }
-  | { t: 'top'; rows: { name: string; rating: number; games: number; wins: number; league: string }[]; season: string }
+  | { t: 'top'; rows: { id?: string; name: string; rating: number; games: number; wins: number; league: string }[]; season: string; prizes?: SeasonPrizes }
   | { t: 'sync'; phase: 'veto' | 'mull' | 'play'; view?: HState; deadline: number; map?: string; side?: Side; myAgent?: string; oppAgent?: string; mullDone?: boolean }
   | { t: 'err'; msg: string }
   | { t: 'pong'; now: number };

@@ -5,3 +5,4 @@ dist-standalone.html
 .standalone
 *.sqlite
 *.sqlite-*
+server/prizes.json

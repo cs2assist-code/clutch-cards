@@ -16,13 +16,14 @@
 import { Database } from 'bun:sqlite';
 import type { ServerWebSocket } from 'bun';
 import { createHmac, randomInt } from 'node:crypto';
+import { readFileSync, statSync } from 'node:fs';
 import { AGENTS, MAPS } from '../src/game/cards';
 import type { Side } from '../src/game/types';
 import { choose, endTurn, mulligan, newGame, setRng, startGame, type HState, type PI } from '../src/hs/engine';
 import { apply } from '../src/hs/ai';
 import { isMove, knifeFor, MOVES, newKnife, resolveKnife, type KnifeRound, type KnifeState, type Move } from '../src/hs/knife';
 import {
-  type HistRow, type PeerRow, HIDDEN, leagueOf, levelOf, MIN_RATING, rotateAction, rotateEv, unrotateAction, validAction, viewFor,
+  type HistRow, type PeerRow, type Prize, type SeasonPrizes, prizePlaces, HIDDEN, leagueOf, levelOf, MIN_RATING, rotateAction, rotateEv, unrotateAction, validAction, viewFor,
   type Agents, type C2S, type PlayerInfo, type S2C, type StepAction,
 } from '../src/online/protocol';
 
@@ -53,6 +54,7 @@ CREATE TABLE IF NOT EXISTS matches (id INTEGER PRIMARY KEY, at INTEGER NOT NULL,
   ra_before REAL, rb_before REAL, ra_after REAL, rb_after REAL);
 CREATE INDEX IF NOT EXISTS players_top ON players (season, rating DESC);
 CREATE TABLE IF NOT EXISTS friends (a TEXT NOT NULL, b TEXT NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (a, b));
+CREATE TABLE IF NOT EXISTS season_results (season INTEGER NOT NULL, place INTEGER NOT NULL, player TEXT NOT NULL, name TEXT NOT NULL, rating REAL NOT NULL, games INTEGER NOT NULL, prize TEXT, PRIMARY KEY (season, place));
 CREATE INDEX IF NOT EXISTS matches_a ON matches (a, id); CREATE INDEX IF NOT EXISTS matches_b ON matches (b, id);`);
 
 function currentSeason(): { id: number; name: string } {
@@ -60,7 +62,37 @@ function currentSeason(): { id: number; name: string } {
   if (!row) { db.run('INSERT INTO seasons (name, started) VALUES (?, ?)', ['Сезон 1', Date.now()]); row = currentSeason(); }
   return row;
 }
+// ── Призы сезона: server/prizes.json (путь можно задать PRIZES=…). Файл перечитывается при изменении, перезапуск не нужен.
+//   { "ends": "2026-12-31", "minGames": 20, "prizes": [ { "place": 1, "skin": "AK-47 | Redline", "wear": "Field-Tested", "rarity": "classified", "image": "https://…" }, … ] }
+const PRIZES_FILE = env.PRIZES ?? `${import.meta.dir}/prizes.json`;
+let prizesCache: { mtime: number; data: SeasonPrizes | undefined } = { mtime: -1, data: undefined };
+function seasonPrizes(): SeasonPrizes | undefined {
+  try {
+    const st = statSync(PRIZES_FILE);
+    if (st.mtimeMs !== prizesCache.mtime) {
+      const j = JSON.parse(readFileSync(PRIZES_FILE, 'utf8'));
+      const prizes = (Array.isArray(j.prizes) ? j.prizes : []).filter((x: Prize) => x && Number(x.place) >= 1 && Number(x.place) <= 10 && typeof x.skin === 'string')
+        .map((x: Prize) => ({ place: Number(x.place), skin: String(x.skin).slice(0, 60), wear: x.wear ? String(x.wear).slice(0, 30) : undefined, rarity: x.rarity ? String(x.rarity) : undefined,
+          image: typeof x.image === 'string' && /^https:\/\//.test(x.image) ? x.image : undefined, price: x.price ? String(x.price).slice(0, 16) : undefined }))
+        .sort((a: Prize, b: Prize) => a.place - b.place);
+      const ends = j.ends ? Date.parse(j.ends) : NaN;
+      prizesCache = { mtime: st.mtimeMs, data: prizes.length ? { ends: Number.isFinite(ends) ? ends : undefined, minGames: Math.max(0, Number(j.minGames) || 0), prizes } : undefined };
+    }
+  } catch { prizesCache = { mtime: -2, data: undefined }; }
+  return prizesCache.data;
+}
+function topRows(season: number, limit = 50) {
+  return (db.query('SELECT id, name, rating, games, wins FROM players WHERE season = ? AND games > 0 ORDER BY rating DESC LIMIT ?').all(season, limit) as PlayerRow[]);
+}
 if (process.argv[2] === '--new-season') {
+  // Итоги прошлого сезона: кто занял призовые места (для выдачи скинов)
+  const old = currentSeason(), pz = seasonPrizes(), rows = topRows(old.id, 500);
+  const places = prizePlaces(rows, pz?.minGames ?? 0);
+  for (const [r, place] of places) {
+    const prize = pz?.prizes.find((x) => x.place === place);
+    db.run('INSERT OR REPLACE INTO season_results (season, place, player, name, rating, games, prize) VALUES (?,?,?,?,?,?,?)', [old.id, place, r.id, r.name, r.rating, r.games, prize ? `${prize.skin}${prize.wear ? ` (${prize.wear})` : ''}` : null]);
+    console.log(`#${place} ${r.name} (${r.id}) ${Math.round(r.rating)} Elo — ${prize?.skin ?? 'без приза'}`);
+  }
   const name = process.argv[3] ?? `Сезон ${currentSeason().id + 1}`;
   db.run('INSERT INTO seasons (name, started) VALUES (?, ?)', [name, Date.now()]);
   const id = currentSeason().id;
@@ -424,9 +456,8 @@ function onMessage(ws: WS, m: C2S) {
   switch (m.t) {
     case 'top': {
       const season = currentSeason();
-      const rows = (db.query('SELECT name, rating, games, wins FROM players WHERE season = ? AND games > 0 ORDER BY rating DESC LIMIT 50').all(season.id) as PlayerRow[])
-        .map((x) => ({ name: x.name, rating: Math.round(x.rating), games: x.games, wins: x.wins, league: leagueOf(x.rating).name }));
-      return send(ws, { t: 'top', rows, season: season.name });
+      const rows = topRows(season.id).map((x) => ({ id: x.id, name: x.name, rating: Math.round(x.rating), games: x.games, wins: x.wins, league: leagueOf(x.rating).name }));
+      return send(ws, { t: 'top', rows, season: season.name, prizes: seasonPrizes() });
     }
     case 'profile': send(ws, { t: 'me', me: info(loadPlayer(u.id, u.name)), season: currentSeason().name }); return send(ws, { t: 'profile', history: history(u.id) });
     case 'queue': {
