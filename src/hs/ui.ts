@@ -71,9 +71,9 @@ let hooks = { render: () => {}, menu: () => {}, root: document.body as HTMLEleme
 export function hsInit(h: typeof hooks) { hooks = h; setupDrag(); }
 const FAST = location.hash.includes('fast');
 const wait = (ms: number) => new Promise((r) => setTimeout(r, FAST ? 0 : ms));
-/** Деньги в тысячах, через запятую: 5300 → «$5,3», 600 → «$0,6». */
+/** Деньги в тысячах, через запятую: 5300 → «$5,3K», 600 → «$0,6K». */
 const kilo = (n: number) => (n / 1000).toLocaleString('ru-RU', { maximumFractionDigits: 2 });
-const money = (n: number) => '$' + kilo(n);
+const money = (n: number) => '$' + kilo(n) + 'K';
 const DIFF_RU: Record<Diff, string> = { easy: 'Новичок', normal: 'Обычный', hard: 'Сложный' };
 const other = (x: Side): Side => (x === 'T' ? 'CT' : 'T');
 const mySide = () => (S.on ? S.on.side : S.side);
@@ -237,7 +237,7 @@ function cashTick() {
   requestAnimationFrame(cashTick);
 }
 requestAnimationFrame(cashTick);
-const moneyHTML = (n: number) => `<em>$</em>${kilo(n)}`;
+const moneyHTML = (n: number) => `<em>$</em>${kilo(n)}<em>K</em>`;
 
 // ─────────────────────────── Действия ───────────────────────────
 const elOf = (id: string) => hooks.root.querySelector<HTMLElement>(`[data-hid="${CSS.escape(id)}"]`);
@@ -1207,7 +1207,7 @@ function mullHTML() {
   const side = mySide();
   return `<div class="hs-ov"><div class="hs-ovbox">
     <h3>Вы за ${side === 'T' ? 'T — атака' : 'CT — защита'}</h3>
-    <p class="note">${side === 'T' ? 'Вы ходите первым. ' : 'Вы ходите вторым: на 1 карту больше и «Дроп» (+$1 на один ход). '}Отметьте карты, которые хотите заменить.</p>
+    <p class="note">${side === 'T' ? 'Вы ходите первым. ' : 'Вы ходите вторым: на 1 карту больше и «Дроп» (+$1K на один ход). '}Отметьте карты, которые хотите заменить.</p>
     <div class="hs-mull">${s.p[0].hand.map((c) => `<button class="hc f-${hcard(c.id).side} ${S.mull.has(c.uid) ? 'out' : ''}" data-act="hs-mull" data-uid="${c.uid}">${cardFace(hcard(c.id))}${S.mull.has(c.uid) ? '<em>Заменить</em>' : ''}</button>`).join('')}</div>
     <p class="hs-mapline"><b>${esc(mapDef(S.map).name)}</b> · ${esc(MAP_RULES[S.map] ?? '')}</p>
     ${matchupHTML(styleOf(S.setup[side]), styleOf(S.botAgent))}
@@ -1295,7 +1295,7 @@ function rulesHTML() {
     </ul>
     <h4 class="sub">Награды</h4>
     <ul class="hs-ul">
-      <li>За убийство — деньги в следующем ходу ($0,3–0,6 по классу оружия).</li>
+      <li>За убийство — деньги в следующем ходу ($0,3–0,6K по классу оружия).</li>
       <li>Убийство делает бойца ветераном ★ с бонусом своего класса.</li>
       <li>Если убитый не нанёс ни единицы урона, его оружие уходит вам в руку трофеем — бесплатно.</li>
     </ul>
@@ -1304,8 +1304,8 @@ function rulesHTML() {
     <h4 class="sub">Механики из CS</h4>
     <ul class="hs-ul">
       <li><b>Позиция.</b> Ставя бойца, выбирайте место: дробь и флешка задевают соседей, бойцы рядом с Укрытием не видны вражеским снайперам (значок щита).</li>
-      <li><b>Энтри.</b> Первое убийство бойцом в ваш ход — +$0,3 в следующем ходу (у «Раша» +$0,6 и +1 атаки бойцу).</li>
-      <li><b>Эко раунд.</b> Ничего не сыграли за ход (ни карты, ни бай-меню, ни силы героя) — со второго хода вместо «Конец хода» горит «Эко раунд»: на выбор +2 карты сразу (деньги переносятся как обычно) или +$3 к деньгам следующего хода вместо переноса.</li>
+      <li><b>Энтри.</b> Первое убийство бойцом в ваш ход — +$0,3K в следующем ходу (у «Раша» +$0,6K и +1 атаки бойцу).</li>
+      <li><b>Эко раунд.</b> Ничего не сыграли за ход (ни карты, ни бай-меню, ни силы героя) — со второго хода вместо «Конец хода» горит «Эко раунд»: на выбор +2 карты сразу (деньги переносятся как обычно) или +$3K к деньгам следующего хода вместо переноса.</li>
       <li><b>Трейд.</b> Кто убил вашего бойца, помечен: ваши бойцы бьют его на 2 сильнее до конца вашего следующего хода.</li>
       <li><b>Клатч.</b> Ваш последний боец против двух и больше бьёт на 2 сильнее.</li>
       <li><b>Сейв.</b> Раз в ход можно увести бойца, который не стрелял и не вышел в этом ходу, — карта вернётся в руку.</li>
@@ -2039,7 +2039,7 @@ const TUT_STEPS: TutStep[] = [
   { id: 'money2', info: true, text: () => `Не потратили — до ${money(HS.carry)} перейдёт на следующий ход, остальное сгорит. Под суммой написано, сколько добавится в следующий ход: доход плюс награды.`,
     target: () => '#cash0 .hs-next', done: () => false },
   // ── Карта ──
-  { id: 'anatomy', info: true, text: 'Как читать карту: зелёная плашка — цена; все деньги в игре — в тысячах долларов (1,5 = $1 500), жёлтый овал — атака, сердце — здоровье, значок по центру — класс оружия. Любую карту можно нажать и прочитать её свойства.',
+  { id: 'anatomy', info: true, text: 'Как читать карту: зелёная плашка — цена; все деньги в игре — в тысячах долларов, K = тысяча ($1,5K = $1500), жёлтый овал — атака, сердце — здоровье, значок по центру — класс оружия. Любую карту можно нажать и прочитать её свойства.',
     target: () => handSel(handUid('tec9')) ?? '.hs-hand .hc', done: () => false },
   { id: 'unit', text: 'Выставьте бойца: перетащите Tec-9 из руки на свой ряд — или нажмите его, затем «На стол».',
     target: () => playFlow('tec9'), allow: () => playAllow('tec9'), done: () => me0().board.some((u) => u.card === 'tec9'), need: () => !!handUid('tec9') },
@@ -2056,7 +2056,7 @@ const TUT_STEPS: TutStep[] = [
     target: () => (S.sel?.k === 'atk' ? '.tgt' : (() => { const u = me0().board.find((x) => canAttack(S.s!, 0, x.uid)); return u ? `[data-hid="${u.uid}"]` : null; })()),
     allow: () => ['.tgt', ...me0().board.filter((x) => canAttack(S.s!, 0, x.uid)).map((x) => `[data-hid="${x.uid}"]`)],
     done: () => me0().board.some((u) => u.shot), need: () => me0().board.some((u) => canAttack(S.s!, 0, u.uid) && attackTargets(S.s!, 0, u.uid).length > 0) },
-  { id: 'rewards', info: true, text: () => `Награды приходят в следующий ход. За убийство — по классу оружия убийцы: пистолет ${money(KILL_REWARD.pistol!)}, ПП ${money(KILL_REWARD.smg!)}, дробовик ${money(KILL_REWARD.shotgun!)}, винтовка, снайперка и пулемёт ${money(KILL_REWARD.rifle!)}. Первое убийство за ход (энтри) — ещё $0,3, у «Раша» $0,6.`,
+  { id: 'rewards', info: true, text: () => `Награды приходят в следующий ход. За убийство — по классу оружия убийцы: пистолет ${money(KILL_REWARD.pistol!)}, ПП ${money(KILL_REWARD.smg!)}, дробовик ${money(KILL_REWARD.shotgun!)}, винтовка, снайперка и пулемёт ${money(KILL_REWARD.rifle!)}. Первое убийство за ход (энтри) — ещё $0,3K, у «Раша» $0,6K.`,
     target: () => '#cash0', done: () => false },
   { id: 'lossbonus', info: true, text: () => `Бонус за отставание, как в CS: если у вашего героя на ${HS.lossGap}+ здоровья меньше, чем у соперника, каждый такой ход подряд даёт +${money(HS.lossStep)} (до +${money(HS.lossStep * HS.lossMax)}). Закладка бомбы — T +${money(HS.plantBonus)} (Phoenix ${money(1300)}), обезвреживание — CT +${money(HS.defuseBonus)}.`,
     target: () => '#cash0', done: () => false },
@@ -2064,7 +2064,7 @@ const TUT_STEPS: TutStep[] = [
   // ── Ход 3: гранаты, снаряжение, бай-меню, сила героя ──
   { id: 'nades', info: true, text: 'Гранаты: HE — 3 урона всем бойцам врага; молотов и зажигательная — 4 урона и горение; флешка — боец и соседи пропустят атаку и не ответят; дым — снайперы и пулемёты врага пропустят атаку; Zeus — 4 урона сквозь броню, бьёт и бомбу.',
     target: () => handSel(handUid('flash') ?? handUid('he')), done: () => false },
-  { id: 'gear', info: true, text: 'Снаряжение: бронежилет — +1 брони и здоровья, шлем — то же и защита от хедшота, аптечка — +4 здоровья, буст — +2 атаки, «Дроп» — сразу +$1. Броня режет урон пистолетов, ПП, дробовиков и гранат, но не винтовок и снайперок.',
+  { id: 'gear', info: true, text: 'Снаряжение: бронежилет — +1 брони и здоровья, шлем — то же и защита от хедшота, аптечка — +4 здоровья, буст — +2 атаки, «Дроп» — сразу +$1K. Броня режет урон пистолетов, ПП, дробовиков и гранат, но не винтовок и снайперок.',
     target: () => null, done: () => false },
   { id: 'shop', info: true, text: () => `Бай-меню под деньгами: за ${money(HS.shopCost)} выбрать 1 из ${HS.shopChoice} карт, каждая следующая покупка за ход дороже на ${money(HS.shopCost)}. А в начале хода вы открываете 2 верхние карты колоды и берёте одну.`,
     target: () => '.hs-shopbtn', done: () => false },

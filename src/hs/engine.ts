@@ -650,7 +650,7 @@ export function playCard(s: HState, p: PI, uid: string, target?: string, at?: nu
       s.log.push({ t: 'buff', id: x.uid, text: '+1' });
     } break;
     case 'ba_wall': for (const x of [...en.board]) if (!isBomb(x)) { damageUnit(s, x, 1 + hb + (clsOf(x) === 'cover' ? 3 : 0), { src: 'fire' }); x.burn = fire; } break;
-    case 'pr_contract': P.bonus += 2000; s.log.push({ t: 'buff', id: heroId(p), text: '+$2 в след. ход' }); break;
+    case 'pr_contract': P.bonus += 2000; s.log.push({ t: 'buff', id: heroId(p), text: '+$2K в след. ход' }); break;
   }
   cleanup(s, { p, cls: 'spell' });
   return true;
