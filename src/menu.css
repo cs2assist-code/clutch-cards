@@ -19,7 +19,7 @@
   -webkit-mask: linear-gradient(#000 55%, transparent 98%); mask: linear-gradient(#000 55%, transparent 98%); filter: saturate(1.05) contrast(1.05); animation: kmIn .9s cubic-bezier(.2,.8,.2,1) both; }
 .km-art img.t { left: -18%; -webkit-mask: linear-gradient(90deg, #000 45%, transparent 92%), linear-gradient(#000 55%, transparent 98%); -webkit-mask-composite: source-in; mask: linear-gradient(90deg, #000 45%, transparent 92%) intersect, linear-gradient(#000 55%, transparent 98%); }
 .km-art img.ct { right: -18%; animation-delay: .12s; -webkit-mask: linear-gradient(270deg, #000 45%, transparent 92%), linear-gradient(#000 55%, transparent 98%); -webkit-mask-composite: source-in; mask: linear-gradient(270deg, #000 45%, transparent 92%) intersect, linear-gradient(#000 55%, transparent 98%); }
-.km-art.one { background: var(--key) center 20% / cover no-repeat; -webkit-mask: linear-gradient(#000 50%, transparent 100%); mask: linear-gradient(#000 50%, transparent 100%); animation: kmFade 1s ease both; }
+.km-art.one { height: 84vh; max-height: 820px; background: linear-gradient(rgba(8,10,13,.7), transparent 14%), var(--key) center top / 100% auto no-repeat; -webkit-mask: linear-gradient(#000 50%, transparent 100%); mask: linear-gradient(#000 50%, transparent 100%); animation: kmFade 1s ease both; }
 @keyframes kmIn { from { opacity: 0; transform: translateY(16px); } }
 @keyframes kmFade { from { opacity: 0; } }
 

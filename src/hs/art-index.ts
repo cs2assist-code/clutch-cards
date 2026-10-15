@@ -3,4 +3,4 @@ export const UNIT_ART = new Set<string>(["ct_aug","ct_awp","ct_bizon","ct_cz75",
 /** Силуэты оружия и предметов (scripts/make-sil.py). */
 export const SIL = new Set<string>(["ak47","aug","awp","bizon","boost","box","clutch","cz75","deagle","decoy","door","drop","elites","fakeplant","famas","fiveseven","flash","g3sg1","galil","glock","he","helmet","incendiary","kevlar","kit","knife","m249","m4a1s","m4a4","mac10","mag7","medkit","molotov","mp5sd","mp7","mp9","negev","ninja","nova","p2000","p250","p90","r8","rushb","sawedoff","scar20","sg553","shield","smoke","ssg","tec9","ump45","usp","wallbang","xm1014","zeus"]);
 /** Оформление (ui_*.webp): ключевой арт меню и т. п. — подхватывается, если файл есть. */
-export const UI_IMG = new Set<string>([]);
+export const UI_IMG = new Set<string>(["menu_key"]);
