@@ -592,11 +592,10 @@ function knifeHTML(): string {
   const hearts = (n: number) => Array.from({ length: KNIFE_HP }, (_, i) => `<i class="${i < n ? 'on' : ''}"></i>`).join('');
   const team = (T: string, CT: string, who: string, p: 0 | 1) => `<div class="kn-p p${p} ${rv && rv.winner !== null ? (rv.winner === p ? 'hit' : 'hurt') : ''}">
       <div class="kn-team"><span class="portrait">${agentArt('T', T)}</span><span class="portrait">${agentArt('CT', CT)}</span></div>
-      <b>${who}</b><span class="kn-hp">${hearts(k.hp[p])}</span>
-      <small>Конёк: <em>${MOVE_RU[k.fav[p]]}</em> ×2</small></div>`;
+      <b>${who}</b><span class="kn-hp">${hearts(k.hp[p])}</span></div>`;
   let center = '<span class="kn-vs">VS</span>';
   if (rv) {
-    const res = rv.winner === null ? 'Ничья — ещё раз' : `${MOVE_RU[rv.picks[rv.winner]]} бьёт ${MOVE_RU[rv.picks[rv.winner === 0 ? 1 : 0]]} · −${rv.dmg}${rv.dmg === 2 ? ' (конёк)' : ''}`;
+    const res = rv.winner === null ? 'Ничья — ещё раз' : `${MOVE_RU[rv.picks[rv.winner]]} бьёт ${MOVE_RU[rv.picks[rv.winner === 0 ? 1 : 0]]} · −1 жизнь`;
     center = `<div class="kn-reveal"><span class="kn-card ${rv.winner === 0 ? 'win' : rv.winner === 1 ? 'lose' : ''}">${MOVE_ICON[rv.picks[0]]()}<b>${MOVE_RU[rv.picks[0]]}</b></span>
       <span class="kn-card ${rv.winner === 1 ? 'win' : rv.winner === 0 ? 'lose' : ''}">${MOVE_ICON[rv.picks[1]]()}<b>${MOVE_RU[rv.picks[1]]}</b></span></div><p class="kn-res">${res}</p>`;
   }
@@ -614,10 +613,10 @@ function knifeHTML(): string {
     bottom = `<h2 class="kn-title lose">Ножи у бота</h2><p class="note">Бот выбрал ${kn.botSide === 'T' ? 'T (атаку)' : 'CT (защиту)'} — вы играете за <b>${mine}</b>.</p>
       <button class="primary big-btn" data-act="hs-knife-go">В бой за ${mine}</button>`;
   } else {
-    bottom = `<div class="kn-moves">${MOVES.map((m) => `<button class="kn-move ${kn.pick === m ? 'on' : ''} ${k.fav[0] === m ? 'fav' : ''}" data-act="hs-knife" data-v="${m}" ${kn.pick ? 'disabled' : ''}>
-        ${MOVE_ICON[m]()}<b>${MOVE_RU[m]}</b><small>бьёт ${MOVE_RU[BEATS[m]]}</small>${k.fav[0] === m ? '<em>×2</em>' : ''}</button>`).join('')}</div>
+    bottom = `<div class="kn-moves">${MOVES.map((m) => `<button class="kn-move ${kn.pick === m ? 'on' : ''}" data-act="hs-knife" data-v="${m}" ${kn.pick ? 'disabled' : ''}>
+        ${MOVE_ICON[m]()}<b>${MOVE_RU[m]}</b><small>бьёт ${MOVE_RU[BEATS[m]]}</small></button>`).join('')}</div>
       ${ol ? `<p class="note kn-rules">${kn.pick ? (ol.oppPicked ? 'Открываем…' : `Ждём ${opp}…`) : ol.oppPicked ? `${opp} уже выбрал — ваш ход` : 'Выбирайте приём'}${timer}</p>` : ''}
-      <p class="note kn-rules">Тайно выберите приём, ${ol ? 'соперник' : 'бот'} выбирает одновременно. Победа — 1 урон, победа своим коньком — 2. У кого кончатся жизни — проиграл ножи.</p>`;
+      <p class="note kn-rules">Тайно выберите приём, ${ol ? 'соперник' : 'бот'} выбирает одновременно. Каждая победа в обмене снимает сопернику одну жизнь. У кого кончатся все три — проиграл ножи.</p>`;
   }
   return `<main class="kn rm">
     <header class="rm-head">${ol ? '<span></span>' : '<button class="ghost sm" data-act="hs-menu">← Меню</button>'}<span class="rm-title">Ножевой раунд${S.phase === 'knife' ? ` · ${k.round}` : ''}</span><span></span></header>

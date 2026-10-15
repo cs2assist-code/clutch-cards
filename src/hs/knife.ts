@@ -1,8 +1,7 @@
 // Ножевой раунд перед матчем: кто выиграет — выбирает сторону (T или CT), дальше одна партия.
 // Дуэль «Нож · Щит · Zeus»: оба тайно выбирают приём, потом открывают.
 //   Нож бьёт Zeus, Zeus бьёт Щит, Щит бьёт Нож; одинаковые — ничья, переигрываем.
-// У каждого 3 жизни. Победа приёмом — 1 урон, а своим «коньком» (он виден обоим) — 2.
-// Конёк даёт глубину: его выгодно играть, но соперник это знает и может поймать.
+// У каждого 3 жизни, любая победа в обмене снимает одну.
 // Модуль общий для игры с ботом и для сервера онлайна.
 
 export type Move = 'knife' | 'shield' | 'zeus';
@@ -16,16 +15,13 @@ export const KNIFE_HP = 3;
 export interface KnifeRound { picks: [Move, Move]; winner: KP | null; dmg: number }
 export interface KnifeState {
   hp: [number, number];
-  /** «Конёк» каждого игрока: победа этим приёмом бьёт на 2. */
-  fav: [Move, Move];
   round: number;
   rounds: KnifeRound[];
   winner: KP | null;
 }
 
-export function newKnife(rnd: () => number = Math.random): KnifeState {
-  const pick = () => MOVES[Math.floor(rnd() * 3)];
-  return { hp: [KNIFE_HP, KNIFE_HP], fav: [pick(), pick()], round: 1, rounds: [], winner: null };
+export function newKnife(): KnifeState {
+  return { hp: [KNIFE_HP, KNIFE_HP], round: 1, rounds: [], winner: null };
 }
 
 export const isMove = (m: unknown): m is Move => m === 'knife' || m === 'shield' || m === 'zeus';
@@ -35,7 +31,7 @@ export function resolveKnife(k: KnifeState, a: Move, b: Move): KnifeRound {
   let winner: KP | null = null;
   if (BEATS[a] === b) winner = 0;
   else if (BEATS[b] === a) winner = 1;
-  const dmg = winner === null ? 0 : ([a, b][winner] === k.fav[winner] ? 2 : 1);
+  const dmg = winner === null ? 0 : 1;
   if (winner !== null) {
     const loser: KP = winner === 0 ? 1 : 0;
     k.hp[loser] = Math.max(0, k.hp[loser] - dmg);
@@ -47,15 +43,14 @@ export function resolveKnife(k: KnifeState, a: Move, b: Move): KnifeRound {
   return r;
 }
 
-/** Приём бота: чаще свой конёк, иногда — ответ на конёк соперника, иногда наугад. */
+/** Приём бота: иногда отвечает на прошлый приём соперника или повторяет свой выигрышный, иначе наугад. */
 export function botKnifeMove(k: KnifeState, me: KP, rnd: () => number = Math.random): Move {
   const opp: KP = me === 0 ? 1 : 0;
+  const last = k.rounds[k.rounds.length - 1];
   const counter = (m: Move) => MOVES.find((x) => BEATS[x] === m)!;
   const x = rnd();
-  if (x < 0.34) return k.fav[me];
-  if (x < 0.62) return counter(k.fav[opp]);
-  // соперник может ждать нашего конька и ответить на него — тогда ловим его ответ
-  if (x < 0.8) return counter(counter(k.fav[me]));
+  if (last && x < 0.3) return counter(last.picks[opp]);          // люди часто повторяют прошлый приём
+  if (last && last.winner === me && x < 0.45) return last.picks[me];
   return MOVES[Math.floor(rnd() * 3)];
 }
 
@@ -63,7 +58,7 @@ export function botKnifeMove(k: KnifeState, me: KP, rnd: () => number = Math.ran
 export function knifeFor(k: KnifeState, seat: KP): KnifeState {
   if (seat === 0) return k;
   return {
-    hp: [k.hp[1], k.hp[0]], fav: [k.fav[1], k.fav[0]], round: k.round,
+    hp: [k.hp[1], k.hp[0]], round: k.round,
     rounds: k.rounds.map((r) => ({ picks: [r.picks[1], r.picks[0]], winner: r.winner === null ? null : r.winner === 0 ? 1 : 0, dmg: r.dmg })),
     winner: k.winner === null ? null : k.winner === 0 ? 1 : 0,
   };

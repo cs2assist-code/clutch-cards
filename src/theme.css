@@ -244,7 +244,6 @@ h4.sub, .sub { font: 600 11px var(--font-body) !important; letter-spacing: .18em
 .kn-move b { font: 700 16px var(--font-title); letter-spacing: .1em; text-transform: uppercase; }
 .kn-move small { font-size: 11px; color: var(--cs-muted); }
 .kn-move em { position: absolute; top: -1px; right: 8px; font: 700 10px/1 var(--font-body); font-style: normal; padding: 3px 5px; border-radius: 0 0 2px 2px; background: var(--cs-t); color: #1d1103; }
-.kn-move.fav { border-color: rgba(232,163,61,.5); }
 .kn-move:hover:not(:disabled) { background: var(--cs-panel-hi); border-color: var(--cs-line-hi); }
 .kn-move:active:not(:disabled) { transform: translateY(1px); }
 .kn-move.on { border-color: var(--cs-go); background: rgba(122,201,67,.12); }

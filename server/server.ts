@@ -131,7 +131,7 @@ function validAgents(a: unknown): Agents | null {
 function createRoom(a: Omit<Seat, 'mullDone'>, b: Omit<Seat, 'mullDone'>, ranked: boolean) {
   const r: Room = {
     id: ++roomSeq, ranked, seats: [{ ...a, mullDone: false }, { ...b, mullDone: false }], phase: 'knife',
-    knife: newKnife(() => randomInt(0, 1_000_000) / 1_000_000), picks: [null, null], sidesSet: false,
+    knife: newKnife(), picks: [null, null], sidesSet: false,
     maps: MAPS.map((m) => m.id), banned: [], vetoTurn: randomInt(0, 2) as PI, map: '', sides: ['T', 'CT'], agents: ['', ''], s: null, deadline: 0,
   };
   for (const st of r.seats) roomOf.set(st.id, r);
