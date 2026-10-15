@@ -49,8 +49,6 @@ const S = {
   radioOpen: false,
   /** Обучающий матч: какие подсказки уже показаны. */
   tut: null as null | TutState,
-  /** Таймер хода против бота: когда истекает (0 — не идёт) и для какого хода заведён. */
-  turnDl: 0, turnKey: '',
 };
 interface OnlineMatch {
   ranked: boolean; opp: { name: string; rating: number; league: string };
@@ -913,7 +911,7 @@ function heroHTML(p: PI, tg: Set<string>) {
   if (cashOf !== gameKey()) { cashOf = gameKey(); shownCash[0] = s.p[0].money; shownCash[1] = s.p[1].money; }
   const cash = `<div class="hs-cash" id="cash${p}"><b data-cash="${p}" data-to="${P.money}" data-at="${shownCash[p]}">${moneyHTML(shownCash[p]!)}</b>${pips(P.money)}
       ${P.lossStreak ? `<small class="hs-loss">отставание ×${Math.min(P.lossStreak, HS.lossMax)}: +${money(lossBonus(P))}</small>` : ''}
-      ${p === 0 ? `<small>след. ход ${money(next)}</small>` : `<small>${P.hand.length} в руке · ${P.deck.length} в колоде</small>`}
+      ${p === 0 ? `<small class="hs-next">+${money(Math.max(0, next - Math.min(P.money, HS.carry)))} в след. ход</small>` : `<small>${P.hand.length} в руке · ${P.deck.length} в колоде</small>`}
       ${p === 0 ? `<button class="hs-shopbtn ${canShop(s, 0) && myTurn() ? 'can' : ''}" data-act="hs-shop">Бай-меню · ${money(shopPrice(P))}</button>` : ''}</div>`;
   const power = `<button class="hs-pwbtn f-${h.side} ${P.powerUsed ? 'used' : ''} ${canPw ? 'can' : ''} ${S.sel?.k === 'power' && p === 0 ? 'picked' : ''}" data-act="${p === 0 ? 'hs-power' : 'hs-foepower'}">
       <span class="pw-gem"><svg viewBox="0 0 24 24" aria-hidden="true">${TYPE_ICON.spell}</svg></span><b>${esc(pw.name)}</b><small>${money(pw.cost)}</small></button>`;
@@ -1052,7 +1050,7 @@ function boardHTML() {
     <div class="hs-backs" style="--back:url('${esc(cssUrl(backImg(other(mySide()))))}')">${backs}</div>
     ${heroHTML(1, tg)}
     <div class="hs-board b1 ${zoneCls('b1')}" style="--n:${HS.board}">${en.board.map((u) => unitHTML(u, 1, tg)).join('') || '<span class="hs-empty"></span>'}</div>
-    <div class="hs-mid has-tb">${turnBombHTML()}${boardEmblem(S.map)}
+    <div class="hs-mid ${S.on ? 'has-tb' : ''}">${S.on ? turnBombHTML() : ''}${boardEmblem(S.map)}
       <span class="hs-midl">${bomb ? `<span class="hs-bomb">C4 · ${bomb.bomb}</span>` : ''}<button class="hs-logbtn" data-act="hs-log">Журнал · ход ${Math.ceil(s.turnNo / 2)}</button>${S.on ? radioHTML() : ''}</span>
       <span class="hs-status">${s.turn === 0 && !S.busy ? 'Ваш ход' : esc(S.last || (s.turn === 0 ? '…' : 'Ход соперника'))}</span>
       <button class="hs-end ${idle ? 'idle' : ''}" data-act="hs-end" ${myTurn() ? '' : 'disabled'}>${s.turn === 0 ? 'Конец хода' : 'Ждите'}</button>
@@ -1451,28 +1449,23 @@ setInterval(() => {
 }, 250);
 
 // ─────────────────────────── Таймер хода: бомба слева на границе ───────────────────────────
-// 30 секунд на ход. Против бота время стоит, пока идут анимации; онлайн срок задаёт сервер.
+// 30 секунд на ход — только онлайн, срок задаёт сервер. Против бота таймера нет.
 // Последние 10 секунд бомба пищит чаще и растёт, по истечении ход переходит сопернику.
 export const TURN_SEC = 30;
 function turnBombHTML() {
   return `<div class="hs-turnbomb off" data-turnbomb role="timer" aria-label="Время на ход">
     <i class="tb-ring"></i><img src="${esc(hImg(hcard('c4')))}" alt="" draggable="false"><b class="tb-led"></b></div>`;
 }
-let tbLast = Date.now(), tbBeep = 0, tbFiring = false;
+let tbBeep = 0;
 function turnTimerTick() {
-  const now = Date.now(), dt = now - tbLast; tbLast = now;
+  const now = Date.now();
   const el = document.querySelector<HTMLElement>('[data-turnbomb]');
   const s = S.s;
   let left: number | null = null, mine = false;
   if (s && el && S.phase === 'play' && s.winner === null) {
     if (S.on) {
       if (S.on.deadline) { left = (S.on.deadline - net.serverNow()) / 1000; mine = s.turn === 0; }
-    } else if (!S.tut && s.turn === 0) {
-      const key = `${S.game}:${s.turnNo}`;
-      if (S.turnKey !== key) { S.turnKey = key; S.turnDl = now + TURN_SEC * 1000; tbBeep = 0; }
-      if (S.busy || document.hidden) S.turnDl += dt;   // анимации и свёрнутое окно не съедают время
-      left = (S.turnDl - now) / 1000; mine = true;
-    }
+    }   // против бота таймера нет — он только онлайн, срок задаёт сервер
   }
   if (!el) return;
   if (left === null) { el.className = 'hs-turnbomb off'; return; }
@@ -1484,18 +1477,6 @@ function turnTimerTick() {
   // писк: раз в 2 с, на последних 10 с — каждую секунду, на последних 5 — дважды в секунду
   const every = sec > 10 ? 2000 : sec > 5 ? 1000 : 500;
   if (left > 0 && now - tbBeep >= every && !S.busy) { tbBeep = now; c4.timer(sec <= 10, sec <= 5); el.classList.add('beep'); setTimeout(() => el.classList.remove('beep'), 140); }
-  if (left <= 0 && !S.on && !tbFiring && myTurn()) void turnExpired();
-}
-async function turnExpired() {
-  tbFiring = true;
-  try {
-    if (drag) endDrag(false);
-    S.sel = null; S.info = null; S.showLog = false; resetPend();
-    fx.banner('Время вышло — ход сопернику', 'info', 1100);
-    const s = S.s!;
-    if (s.p[0].choice) await act({ k: 'choose', i: 0 }, 0);
-    if (S.s === s && myTurn()) await playerEndTurn();
-  } finally { tbFiring = false; }
 }
 setInterval(turnTimerTick, 125);
 
