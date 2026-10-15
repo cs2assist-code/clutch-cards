@@ -52,8 +52,9 @@ const S = {
   on: null as null | OnlineMatch,
   lobby: { me: null as PlayerInfo | null, season: '', queued: false, qsize: 0, range: null as null | { lo: number; hi: number; since: number }, history: null as HistRow[] | null, duel: null as string | null, err: '', top: [] as { id?: string; name: string; rating: number; games: number; wins: number; league: string }[], prizes: undefined as SeasonPrizes | undefined, pendingJoin: null as string | null, copied: false,
     friends: null as PeerRow[] | null, recent: [] as PeerRow[], player: null as Extract<S2C, { t: 'player' }> | null, playerFrom: 'rating' as Phase,
-    invite: null as null | { code: string; from: { id: string; name: string; rating: number } }, invNote: '', rematch: '' as '' | 'wait' | 'offer' | 'gone' },
+    invite: null as null | { code: string; from: { id: string; name: string; rating: number } }, invNote: '', rematch: '' as '' | 'wait' | 'offer' | 'gone', agentsOpen: false },
   radioOpen: false,
+  pvMore: false,   // в превью карты показаны подробности (классы, броня, расшифровка свойств)
   /** Обучающий матч: какие подсказки уже показаны. */
   tut: null as null | TutState,
 };
@@ -285,7 +286,7 @@ async function act(a: Action, p: PI) {
 async function showCast(id: string) {
   const el = document.createElement('div');
   el.className = 'hs-cast';
-  el.innerHTML = bigCardHTML(hcard(id), undefined, S.s ? S.s.p[1].hero.side : other(mySide()));
+  el.innerHTML = bigCardHTML(hcard(id), undefined, S.s ? S.s.p[1].hero.side : other(mySide()), true).replace(/<button class="hcb-more"[^>]*>[^<]*<\/button>/, '');
   document.body.appendChild(el);
   await wait(750);
   el.remove();
@@ -830,6 +831,7 @@ export function hsClick(a: string, el: HTMLElement): boolean {
     case 'hs-menu': S.s = null; S.tut = null; if (S.on && S.phase !== 'over') net.send({ t: 'resign' }); S.on = null; hooks.menu(); return true;
     case 'hs-cardinfo': S.info = S.info === el.dataset.v ? null : el.dataset.v!; break;
     case 'hs-closeinfo': S.info = null; break;
+    case 'hs-pvmore': S.pvMore = !S.pvMore; break;
     case 'hs-help': S.help = true; break;
     case 'hs-closehelp': S.help = false; break;
     case 'hs-fullrules': S.help = false; S.phase = 'rules'; break;
@@ -884,6 +886,7 @@ export function hsClick(a: string, el: HTMLElement): boolean {
     case 'hs-again': if (S.on) { S.on = null; S.s = null; openLobby(); return true; } hsOpen(); return true;
     case 'hs-lobby': S.on = null; S.s = null; openLobby(); return true;
     case 'hs-queue': S.lobby.err = ''; if (net.send({ t: 'queue', agents: { T: S.setup.T, CT: S.setup.CT } })) { S.lobby.queued = true; sfx.click(); } else S.lobby.err = 'Нет связи с сервером'; break;
+    case 'hs-agents': S.lobby.agentsOpen = !S.lobby.agentsOpen; break;
     case 'hs-unqueue': net.send({ t: 'unqueue' }); S.lobby.queued = false; S.lobby.range = null; break;
     case 'hs-duel-create': S.lobby.err = ''; S.lobby.copied = false; if (!net.send({ t: 'duel_create', agents: { T: S.setup.T, CT: S.setup.CT } })) S.lobby.err = 'Нет связи с сервером'; break;
     case 'hs-duel-cancel': net.send({ t: 'duel_cancel' }); S.lobby.duel = null; break;
@@ -1058,25 +1061,27 @@ function cardFace(c: HCard, free = false, cost = c.cost, side: Side = mySide()) 
     <span class="hc-cost ${free ? 'free' : ''} ${cost < c.cost ? 'cheap' : ''}"><i>${free ? '0' : cost ? (cost / 1000).toLocaleString('ru-RU') : '0'}</i></span>${free ? '<span class="hc-trophy">трофей</span>' : ''}${c.modes ? '<span class="hc-modes">⇄</span>' : ''}
     ${c.kind === 'unit' ? `<b class="hc-atk"><i>${c.atk}</i></b><b class="hc-hp"><i>${c.hp}</i></b>` : c.kind === 'bomb' ? `<b class="hc-hp"><i>${c.hp}</i></b>` : ''}`;
 }
+function kwShort(kw: KW[]) { const k = kw.filter((x) => x !== 'vet'); return k.length ? `<p class="hcb-kw">${k.map((x) => `<i>${KW_RU[x][0]}</i>`).join('')}</p>` : ''; }
 function kwLines(kw: KW[]) { return kw.filter((k) => k !== 'vet').map((k) => `<li><b>${KW_RU[k][0]}.</b> ${KW_RU[k][1]}</li>`).join(''); }
-function bigCardHTML(c: HCard, u?: HUnit, side: Side = mySide()) {
+function bigCardHTML(c: HCard, u?: HUnit, side: Side = mySide(), compact = false) {
   const kw = u ? u.kw : c.kw ?? [];
-  const extra: string[] = [];
-  if (u?.blind) extra.push('<li><b>Ослеплён.</b> Пропустит следующую атаку и не ответит на выстрел.</li>');
+  const extra: string[] = [], state: string[] = [];
+  if (u?.blind) state.push('<li><b>Ослеплён.</b> Пропустит следующую атаку и не ответит на выстрел.</li>');
   const armor = u ? u.armor : c.armor ?? 0;
   if (armor) extra.push(`<li><b>Броня ${armor}.</b> Каждое попадание пистолетов, ПП, дробовиков и гранат слабее на ${armor} (но 1 урон проходит).</li>`);
   const ci = CLASS_RU[c.cls];
   if (ci && c.kind === 'unit') extra.push(`<li class="good"><b>Силён:</b> ${esc(ci.good)}.</li><li class="bad"><b>Слаб:</b> ${esc(ci.bad)}.</li>`);
   if (c.sig) extra.push(`<li><b>Фирменная карта:</b> ${esc(agent(c.sig).name)}.</li>`);
-  if (u?.burn) extra.push('<li><b>Горит.</b> В начале хода 1 урон ему и соседям.</li>');
-  if (u?.reloading) extra.push('<li><b>Перезарядка.</b> Пропустит следующий ход.</li>');
-  if (u?.bomb) extra.push(`<li><b>Таймер.</b> Взрыв через ${u.bomb} ход(а) T.</li>`);
-  if (u?.marked) extra.push('<li><b>Трейд.</b> Убил бойца соперника — по нему +2 урона до конца хода мстителя.</li>');
+  if (u?.burn) state.push('<li><b>Горит.</b> В начале хода 1 урон ему и соседям.</li>');
+  if (u?.reloading) state.push('<li><b>Перезарядка.</b> Пропустит следующий ход.</li>');
+  if (u?.bomb) state.push(`<li><b>Таймер.</b> Взрыв через ${u.bomb} ход(а) T.</li>`);
+  if (u?.marked) state.push('<li><b>Трейд.</b> Убил бойца соперника — по нему +2 урона до конца хода мстителя.</li>');
   if (c.modes && !u) extra.push(`<li><b>Режим на выбор:</b> ${c.modes.map((m) => `${esc(m.name)} (${esc(m.text)})`).join(' или ')}.</li>`);
   return `<div class="hcb f-${c.side}">
     <div class="hc big">${cardFace(c, false, c.cost, side)}</div>
     <div class="hcb-txt"><b>${esc(c.name)}</b><small>${money(c.cost)} · <span class="hcb-cls">${typeIcon(c)}</span>${c.kind === 'spell' ? 'действие' : c.kind === 'bomb' ? 'бомба' : c.kind === 'trap' ? 'засада' : clsRu(c.cls)}${u?.kw.includes('vet') ? ' · ★ ветеран' : ''}</small>
-      ${c.text ? `<p>${esc(c.text)}</p>` : ''}<ul>${kwLines(kw)}${extra.join('')}</ul></div></div>`;
+      ${c.text ? `<p>${esc(c.text)}</p>` : ''}${compact && !S.pvMore ? `<ul>${state.join('')}</ul>${kwShort(kw)}${extra.length || kw.some((k) => k !== 'vet') ? '<button class="hcb-more" data-act="hs-pvmore">Подробнее ▾</button>' : ''}`
+        : `<ul>${state.join('')}${kwLines(kw)}${extra.join('')}</ul>${compact ? '<button class="hcb-more" data-act="hs-pvmore">Короче ▴</button>' : ''}`}</div></div>`;
 }
 const clsRu = (c: HCard['cls']) => ({ pistol: 'пистолет', smg: 'пистолет-пулемёт', shotgun: 'дробовик', rifle: 'винтовка', sniper: 'снайперская винтовка', heavy: 'пулемёт', cover: 'укрытие', token: 'жетон', spell: 'действие', bomb: 'бомба', trap: 'засада' })[c];
 
@@ -1101,7 +1106,7 @@ function infoHTML(): string {
       return `<div class="hs-pv slim"><span class="hs-hint"><b>${esc(c.name)}</b>: выберите цель${c.text ? ` — ${esc(c.text)}` : ''}</span>
         <span class="hs-pvbtns">${c.bcOptional ? '<button class="ghost sm" data-act="hs-play">Без цели</button>' : ''}<button class="ghost sm" data-act="hs-cancel">Отмена</button></span></div>`;
     }
-    return `<div class="hs-pv">${bigCardHTML(c)}${inst.free ? '<p class="hs-hint trophy">Трофей: выбитое у соперника оружие, ставится бесплатно.</p>' : ''}<div class="hs-pvbtns">${btn}<button class="ghost sm" data-act="hs-cancel">Отмена</button></div></div>`;
+    return `<div class="hs-pv">${bigCardHTML(c, undefined, mySide(), true)}${inst.free ? '<p class="hs-hint trophy">Трофей: выбитое у соперника оружие, ставится бесплатно.</p>' : ''}<div class="hs-pvbtns">${btn}<button class="ghost sm" data-act="hs-cancel">Отмена</button></div></div>`;
   }
   if (S.sel?.k === 'power') return `<div class="hs-pv slim"><span class="hs-hint">Сила героя: выберите цель</span><button class="ghost sm" data-act="hs-cancel">Отмена</button></div>`;
   if (S.sel?.k === 'atk') {
@@ -1117,7 +1122,7 @@ function infoHTML(): string {
   }
   if (id === 'shopinfo') return `<div class="hs-pv slim" data-act="hs-cancel"><span class="hs-hint"><b>Бай-меню</b> · сейчас ${money(shopPrice(s.p[0]))}: выберите 1 из ${HS.shopChoice} карт своего агента и стороны. Каждая следующая покупка за ход дороже на ${money(HS.shopCost)}. ${s.p[0].hand.length >= HS.hand ? 'Рука полна.' : ''}</span></div>`;
   if (id === 'map') return `<div class="hs-pv slim" data-act="hs-cancel"><span class="hs-hint"><b>${esc(mapDef(S.map).name)}</b>: ${esc(MAP_RULES[S.map] ?? '')}</span></div>`;
-  if (id.startsWith('trap:')) { const c = hcard(id.slice(5)); return `<div class="hs-pv" data-act="hs-cancel">${bigCardHTML(c)}</div>`; }
+  if (id.startsWith('trap:')) { const c = hcard(id.slice(5)); return `<div class="hs-pv" data-act="hs-cancel">${bigCardHTML(c, undefined, mySide(), true)}</div>`; }
   if (id === 'h0' || id === 'h1') {
     const P = s.p[id === 'h0' ? 0 : 1], a = agent(P.hero.agent), pw = POWERS[P.hero.agent];
     return `<div class="hs-pv slim" data-act="hs-cancel"><span class="hs-hint"><b>${esc(a.name)}</b> (${P.hero.side}) · ${P.hero.hp} HP${P.hero.armor ? ` + ${P.hero.armor} брони` : ''}. Сила: ${esc(pw.name)} — ${esc(pw.text)}</span></div>`;
@@ -1125,7 +1130,7 @@ function infoHTML(): string {
   const f = findUnit(s, id);
   if (!f) return '';
   const sv = f.p === 0 && myTurn() && canSave(s, 0, id) ? `<div class="hs-pvbtns"><button class="ghost sm" data-act="hs-save" data-id="${id}">Сейв: вернуть в руку</button></div>` : '';
-  return `<div class="hs-pv"><div data-act="hs-cancel">${bigCardHTML(hcard(f.u.card), f.u, s.p[f.p].hero.side)}</div>${sv}</div>`;
+  return `<div class="hs-pv"><div data-act="hs-cancel">${bigCardHTML(hcard(f.u.card), f.u, s.p[f.p].hero.side, true)}</div>${sv}</div>`;
 }
 
 function boardHTML() {
@@ -1655,6 +1660,12 @@ function agentPickHTML() {
     <p class="note">Сначала ножевой раунд: победитель выбирает сторону, проигравший первым вычёркивает карту в вето. Дальше — одна партия.</p>`;
 }
 
+/** Выбранные герои одной строкой; список агентов раскрывается по нажатию. */
+function agentsLine() {
+  const st = S.setup, L = S.lobby;
+  const one = (side: Side) => { const a = agent(st[side]); return `<span class="ol-ag f-${side}"><span class="portrait xs">${agentArt(side, a.id)}</span><span><small>${side}</small><b>${esc(a.name)}</b></span></span>`; };
+  return `<button class="ol-agents ${L.agentsOpen ? 'open' : ''}" data-act="hs-agents">${one('CT')}${one('T')}<em>${L.agentsOpen ? 'Скрыть ▴' : 'Сменить ▾'}</em></button>`;
+}
 function lobbyHTML() {
   const L = S.lobby, me = L.me, st = net.onlineStatus.state;
   const head = `<header class="rm-head"><button class="ghost sm" data-act="hs-menu">← Меню</button><span class="rm-title">Онлайн</span><button class="ghost sm" data-act="hs-rating">Рейтинг</button></header>`;
@@ -1668,14 +1679,17 @@ function lobbyHTML() {
     : L.duel ? `<div class="ol-box"><p>Дуэль создана. Код: <b class="ol-code">${L.duel}</b></p>
         <button class="primary" data-act="hs-duel-share">Отправить другу</button>${L.copied ? '<small class="note">Ссылка скопирована</small>' : ''}
         <p class="hs-wait">Ждём друга…</p><button class="ghost" data-act="hs-duel-cancel">Отмена</button></div>`
-    : `<button class="primary big-btn" data-act="hs-queue" ${me ? '' : 'disabled'}>Рейтинговая игра</button>
-       <button class="ghost wide" data-act="hs-duel-create" ${me ? '' : 'disabled'}>Дуэль с другом — создать ссылку</button>
-       <div class="ol-join"><input id="duelcode" maxlength="6" placeholder="Код друга" autocomplete="off" autocapitalize="characters"><button class="ghost" data-act="hs-duel-join" ${me ? '' : 'disabled'}>Войти</button></div>`;
+    : `<button class="primary big-btn ol-find" data-act="hs-queue" ${me ? '' : 'disabled'}>Найти матч<small>рейтинговая игра · ход 30 с</small></button>
+       ${agentsLine()}
+       <div class="ol-duel"><h4 class="sub">Дуэль с другом · без рейтинга</h4>
+       <button class="ghost wide" data-act="hs-duel-create" ${me ? '' : 'disabled'}>Создать ссылку-приглашение</button>
+       <div class="ol-join"><input id="duelcode" maxlength="6" placeholder="Код друга" autocomplete="off" autocapitalize="characters"><button class="ghost" data-act="hs-duel-join" ${me ? '' : 'disabled'}>Войти</button></div></div>`;
   return `<main class="rm scroll rm-setup ol">${head}${card}
     ${L.err ? `<p class="ol-err">${esc(L.err)}</p>` : ''}
     ${busy}
-    <p class="note">Рейтинговая — одна игра, ход 30 с, вето карт. Дуэль — без рейтинга. Связь пропала — у вас минута, чтобы вернуться; не вернулись — −35 Elo.</p>
-    ${agentPickHTML()}
+    ${L.invNote && L.duel ? `<p class="note">${esc(L.invNote)}</p>` : ''}
+    ${L.agentsOpen && !L.queued && !L.duel ? agentPickHTML() : ''}
+    <p class="note">Одна игра: ножевой раунд → вето карт → матч. Связь пропала — у вас минута, чтобы вернуться; вышли из матча — −35 Elo.</p>
   </main>`;
 }
 
