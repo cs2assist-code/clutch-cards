@@ -33,6 +33,7 @@ const ICON = {
   globe: svgI('<circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"/><path d="M3 12h18M12 3c3 3.2 3 14.8 0 18M12 3c-3 3.2-3 14.8 0 18" fill="none" stroke="currentColor" stroke-width="1.8"/>'),
   target: svgI('<circle cx="12" cy="12" r="8.5" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="4" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="1.2" fill="currentColor"/>'),
   grad: svgI('<path d="M2 9l10-5 10 5-10 5z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M6 11v5c3 2.5 9 2.5 12 0v-5" fill="none" stroke="currentColor" stroke-width="2"/>'),
+  trophy: svgI('<path d="M7 3h10v4a5 5 0 0 1-10 0zM7 5H4v2a3 3 0 0 0 3 3M17 5h3v2a3 3 0 0 1-3 3M12 12v4M8 21h8M9 16h6v5H9z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>'),
   chart: svgI('<path d="M4 20V10M10 20V4M16 20v-7M22 20H2" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>'),
 };
 const DIFF_RU: Record<string, string> = { easy: 'Новичок', normal: 'Обычный', hard: 'Сложный' };
@@ -84,6 +85,7 @@ function menuHTML() {
       <nav class="km-nav">
         <button data-act="hs-page" data-to="rules">${ICON.help}<b>Как играть</b></button>
         <button data-act="hs-page" data-to="cards">${ICON.cards}<b>Все карты</b></button>
+        <button data-act="rating">${ICON.trophy}<b>Рейтинг</b></button>
         <button data-act="stats">${ICON.chart}<b>Статистика</b></button>
       </nav>
     </section>
@@ -151,6 +153,7 @@ root.addEventListener('click', (ev) => {
     case 'stats': return go('stats');
     case 'quests': return go('quests');
     case 'online': ui.screen = 'hs'; setBackButton(() => go('menu')); hsOpen('lobby'); return;
+    case 'rating': ui.screen = 'hs'; setBackButton(() => go('menu')); hsOpen('rating'); return;
     case 'tutorial': ui.screen = 'hs'; setBackButton(() => go('menu')); hsClick('hs-tutorial', actEl); return;
     case 'settings': ui.settingsOpen = !ui.settingsOpen; return render();
     case 'sound': toggleSound(); if (soundOn()) sfx.click(); return render();

@@ -11,18 +11,25 @@ export const HIDDEN = 'hidden';
 export type Agents = { T: string; CT: string };
 export type StepAction = Action | { k: 'end' };
 
-/** Лиги по рейтингу — как звания в CS. */
-export const LEAGUES: { min: number; name: string; icon: string }[] = [
-  { min: -Infinity, name: 'Сильвер', icon: '▱' },
-  { min: 1050, name: 'Золотая Nova', icon: '✦' },
-  { min: 1200, name: 'Магистр-хранитель', icon: '✪' },
-  { min: 1350, name: 'Легендарный беркут', icon: '❖' },
-  { min: 1500, name: 'Супреме', icon: '✹' },
-  { min: 1650, name: 'Global Elite', icon: '✺' },
+/** Уровни по рейтингу — как на FACEIT: 10 уровней, старт с 1000 (уровень 4). */
+export const LEVELS: { level: number; min: number; max: number }[] = [
+  { level: 1, min: 100, max: 500 }, { level: 2, min: 501, max: 750 }, { level: 3, min: 751, max: 900 },
+  { level: 4, min: 901, max: 1050 }, { level: 5, min: 1051, max: 1200 }, { level: 6, min: 1201, max: 1350 },
+  { level: 7, min: 1351, max: 1530 }, { level: 8, min: 1531, max: 1750 }, { level: 9, min: 1751, max: 2000 },
+  { level: 10, min: 2001, max: Infinity },
 ];
-export const leagueOf = (r: number) => [...LEAGUES].reverse().find((l) => r >= l.min)!;
+export const MIN_RATING = 100;
+export function levelOf(r: number) {
+  const x = Math.round(r);
+  return LEVELS.find((l) => x <= l.max) ?? LEVELS[LEVELS.length - 1];
+}
+/** Совместимость: «лига» — это уровень. */
+export const leagueOf = (r: number) => { const l = levelOf(r); return { ...l, name: `Уровень ${l.level}`, icon: String(l.level) }; };
 
-export interface PlayerInfo { id: string; name: string; rating: number; games: number; wins: number; league: string; provisional: boolean }
+/** Строка истории рейтинговых матчей (для профиля). */
+export interface HistRow { at: number; win: boolean; delta: number; after: number; opp: string; oppRating: number; map: string; reason: string }
+
+export interface PlayerInfo { id: string; name: string; rating: number; games: number; wins: number; league: string; provisional: boolean; level: number; peak: number; rank?: number }
 
 // ── Клиент → сервер ──
 export type C2S =
@@ -41,12 +48,13 @@ export type C2S =
   | { t: 'radio'; key: string }
   | { t: 'resign' }
   | { t: 'top' }
+  | { t: 'profile' }
   | { t: 'ping' };
 
 // ── Сервер → клиент ──
 export type S2C =
   | { t: 'me'; me: PlayerInfo; season: string }
-  | { t: 'queued'; size: number }
+  | { t: 'queued'; size: number; lo?: number; hi?: number; since?: number }
   | { t: 'duel_code'; code: string }
   | { t: 'found'; ranked: boolean; opp: { name: string; rating: number; league: string } }
   /** Ножевой раунд (уже повёрнут: вы — 0). pick: кто выбирает сторону, когда ножи закончились. */
@@ -59,6 +67,7 @@ export type S2C =
   | { t: 'radio'; key: string }
   | { t: 'opp_status'; online: boolean; graceUntil?: number }
   | { t: 'over'; winner: PI; reason: string; ranked: boolean; rating?: { before: number; after: number; league: string } }
+  | { t: 'profile'; history: HistRow[] }
   | { t: 'top'; rows: { name: string; rating: number; games: number; wins: number; league: string }[]; season: string }
   | { t: 'sync'; phase: 'veto' | 'mull' | 'play'; view?: HState; deadline: number; map?: string; side?: Side; myAgent?: string; oppAgent?: string; mullDone?: boolean }
   | { t: 'err'; msg: string }

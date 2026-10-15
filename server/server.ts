@@ -22,7 +22,7 @@ import { choose, endTurn, mulligan, newGame, setRng, startGame, type HState, typ
 import { apply } from '../src/hs/ai';
 import { isMove, knifeFor, MOVES, newKnife, resolveKnife, type KnifeRound, type KnifeState, type Move } from '../src/hs/knife';
 import {
-  HIDDEN, leagueOf, rotateAction, rotateEv, unrotateAction, validAction, viewFor,
+  type HistRow, HIDDEN, leagueOf, levelOf, MIN_RATING, rotateAction, rotateEv, unrotateAction, validAction, viewFor,
   type Agents, type C2S, type PlayerInfo, type S2C, type StepAction,
 } from '../src/online/protocol';
 
@@ -77,7 +77,21 @@ function loadPlayer(id: string, name: string): PlayerRow {
   } else if (p.name !== name) db.run('UPDATE players SET name = ? WHERE id = ?', [name, id]);
   return { ...p, name };
 }
-const info = (p: PlayerRow): PlayerInfo => ({ id: p.id, name: p.name, rating: Math.round(p.rating), games: p.games, wins: p.wins, league: leagueOf(p.rating).name, provisional: p.games < 10 });
+const info = (p: PlayerRow): PlayerInfo => {
+  const rank = p.games ? (db.query('SELECT COUNT(*) AS n FROM players WHERE season = ? AND games > 0 AND rating > ?').get(p.season, p.rating) as { n: number }).n + 1 : undefined;
+  return { id: p.id, name: p.name, rating: Math.round(p.rating), games: p.games, wins: p.wins, league: leagueOf(p.rating).name, provisional: p.games < 5, level: levelOf(p.rating).level, peak: Math.round(p.peak), rank };
+};
+/** Последние рейтинговые матчи игрока. */
+function history(id: string): HistRow[] {
+  const rows = db.query(`SELECT m.at, m.winner, m.a, m.b, m.ra_before, m.rb_before, m.ra_after, m.rb_after, m.map, m.reason, pa.name AS an, pb.name AS bn
+    FROM matches m LEFT JOIN players pa ON pa.id = m.a LEFT JOIN players pb ON pb.id = m.b
+    WHERE m.ranked = 1 AND (m.a = ? OR m.b = ?) ORDER BY m.id DESC LIMIT 15`).all(id, id) as { at: number; winner: string; a: string; b: string; ra_before: number; rb_before: number; ra_after: number; rb_after: number; map: string; reason: string; an: string; bn: string }[];
+  return rows.map((m) => {
+    const me = m.a === id;
+    const before = me ? m.ra_before : m.rb_before, after = me ? m.ra_after : m.rb_after;
+    return { at: m.at, win: m.winner === id, delta: Math.round(after) - Math.round(before), after: Math.round(after), opp: (me ? m.bn : m.an) ?? '?', oppRating: Math.round(me ? m.rb_before : m.ra_before), map: m.map, reason: m.reason };
+  });
+}
 
 // ─────────────────────────── Telegram ───────────────────────────
 /** Проверка подписи initData (https://core.telegram.org/bots/webapps#validating-data-received-via-the-mini-app). */
@@ -270,7 +284,7 @@ function doEnd(r: Room, p: PI) {
   broadcastStep(r, p, { k: 'end' });
 }
 
-// ── Итог: рейтинг Эло (K=40 первые 20 игр сезона, дальше 24) ──
+// ── Итог: рейтинг Эло как на FACEIT: равные соперники — ±25, против сильного побеждать выгоднее. Не ниже 100 ──
 function finish(r: Room, winner: PI, reason: string) {
   if (r.phase === 'over') return;
   r.phase = 'over';
@@ -282,10 +296,11 @@ function finish(r: Room, winner: PI, reason: string) {
   let na = ra, nb = rb;
   if (r.ranked) {
     const ea = 1 / (1 + 10 ** ((rb - ra) / 400));
-    const k = (g: number) => (g < 20 ? 40 : 24);
+    const K = 50;
     const sa = winner === 0 ? 1 : 0;
-    na = ra + k(A.games) * (sa - ea);
-    nb = rb + k(B.games) * ((1 - sa) - (1 - ea));
+    const d = Math.max(5, Math.min(45, Math.round(K * Math.abs(sa - ea))));   // всегда от 5 до 45 очков
+    na = Math.max(MIN_RATING, ra + (sa ? d : -d));
+    nb = Math.max(MIN_RATING, rb + (sa ? -d : d));
     const upd = db.prepare('UPDATE players SET rating = ?, games = games + 1, wins = wins + ?, peak = MAX(peak, ?), updated = ? WHERE id = ?');
     upd.run(na, winner === 0 ? 1 : 0, na, Date.now(), A.id);
     upd.run(nb, winner === 1 ? 1 : 0, nb, Date.now(), B.id);
@@ -301,19 +316,22 @@ function finish(r: Room, winner: PI, reason: string) {
   }
 }
 
-// ── Подбор соперника: ближайший по рейтингу, окно растёт с ожиданием ──
+// ── Подбор как на FACEIT: сначала соперник в пределах ±100 рейтинга (обычно ваш уровень или соседний),
+//    за каждые 5 с ожидания окно шире на 25, но не больше ±350 (примерно ±2 уровня). Пара — ближайшие по рейтингу ──
+export const MM_BASE = Number(env.MM_BASE ?? 100), MM_STEP = Number(env.MM_STEP ?? 25), MM_MAX = Number(env.MM_MAX ?? 350);
+const windowOf = (q: { since: number }, now: number) => Math.min(MM_MAX, MM_BASE + Math.floor((now - q.since) / 5000) * MM_STEP);
 setInterval(() => {
   queue.sort((a, b) => a.rating - b.rating);
   const now = Date.now();
   for (let i = 0; i + 1 < queue.length; i++) {
     const a = queue[i], b = queue[i + 1];
-    const wait = Math.max(now - a.since, now - b.since) / 1000;
-    if (Math.abs(a.rating - b.rating) > 100 + wait * 20) continue;
+    // подходит, только если каждый из двоих готов к такой разнице
+    if (Math.abs(a.rating - b.rating) > Math.min(windowOf(a, now), windowOf(b, now))) continue;
     queue.splice(i, 2); i--;
     const seat = (q: typeof a) => ({ id: q.id, name: q.name, rating: q.rating, games: q.games, agents: q.agents, ws: online.get(q.id) ?? null });
     createRoom(seat(a), seat(b), true);
   }
-  for (const q of queue) send(online.get(q.id), { t: 'queued', size: queue.length });
+  for (const q of queue) { const w = windowOf(q, now); send(online.get(q.id), { t: 'queued', size: queue.length, lo: Math.max(MIN_RATING, Math.round(q.rating - w)), hi: Math.round(q.rating + w), since: q.since }); }
   for (const [code, d] of duels) if (now - d.at > 15 * 60_000) duels.delete(code);
 }, 1000);
 
@@ -372,13 +390,15 @@ function onMessage(ws: WS, m: C2S) {
         .map((x) => ({ name: x.name, rating: Math.round(x.rating), games: x.games, wins: x.wins, league: leagueOf(x.rating).name }));
       return send(ws, { t: 'top', rows, season: season.name });
     }
+    case 'profile': send(ws, { t: 'me', me: info(loadPlayer(u.id, u.name)), season: currentSeason().name }); return send(ws, { t: 'profile', history: history(u.id) });
     case 'queue': {
       const agents = validAgents(m.agents);
       if (!agents || r) return send(ws, { t: 'err', msg: r ? 'Вы уже в игре' : 'Неверные агенты' });
       leaveQueue(u.id);
       const p = loadPlayer(u.id, u.name);
-      queue.push({ id: u.id, name: u.name, rating: p.rating, games: p.games, agents, since: Date.now() });
-      return send(ws, { t: 'queued', size: queue.length });
+      const since = Date.now();
+      queue.push({ id: u.id, name: u.name, rating: p.rating, games: p.games, agents, since });
+      return send(ws, { t: 'queued', size: queue.length, lo: Math.max(MIN_RATING, Math.round(p.rating - MM_BASE)), hi: Math.round(p.rating + MM_BASE), since });
     }
     case 'unqueue': leaveQueue(u.id); return;
     case 'duel_create': {
