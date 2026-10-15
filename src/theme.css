@@ -400,8 +400,9 @@ h4.sub, .sub { font: 600 11px var(--font-body) !important; letter-spacing: .18em
 .hs-backs i { width: 18px !important; height: 25px !important; margin: 0 -4px !important; translate: 0 0 !important; }
 /* Вы: бойцы, перед вами рука, а ваш герой — ближе всего к вам, у нижнего края */
 .hs-hand { margin-top: auto; height: 108px !important; padding-bottom: 0 !important; }
-.hs-hand::before { height: 60% !important; }
-.hs-hero.p0 { position: relative; margin: 0 -12px; padding: 8px 12px calc(8px + env(safe-area-inset-bottom)); background: linear-gradient(rgba(26,14,5,.92), #1a0e05); }
+.hs-hero.p0 { position: relative; margin: 0 -12px; padding: 8px 12px calc(8px + env(safe-area-inset-bottom)); background: none; }
+.hs-hand::before { display: none !important; }   /* без коричневой полосы: под рукой и героем видна карта */
+.hs-hero.p0 .hs-cash, .hs-hero.p0 .hh-name, .hs-hero.p0 .hs-pwbtn { text-shadow: 0 1px 2px #000, 0 0 6px rgba(0,0,0,.9); }
 .hs-hero.p0 .hh::after { display: none; }
 @media (max-height: 700px) {
   .hs-hand { height: 98px !important; }
