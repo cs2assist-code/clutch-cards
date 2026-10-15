@@ -54,12 +54,14 @@ function bot(name: string, idx: number, onCode?: (c: string) => void, joinCode?:
   });
 }
 
+let bad = false;   // для CI: игра без итога или утечка чужих карт — ошибка
 for (let g = 0; g < GAMES; g++) {
   let setCode: (c: string) => void = () => {};
   const code = new Promise<string>((r) => { setCode = r; });
   const t0 = Date.now();
   const [a, b] = await Promise.all([bot('botA', 0, DUEL ? setCode : undefined), bot('botB', 1, undefined, DUEL ? code : undefined)]);
   const ov = (x: typeof a) => (x.result && x.result.t === 'over' ? `${x.result.winner === 0 ? 'победа' : 'поражение'} (${x.result.reason})${x.result.rating ? ` ${x.result.rating.before}→${x.result.rating.after} ${x.result.rating.league}` : ''}` : 'нет итога');
+  if (!a.result || !b.result || a.leaks || b.leaks) bad = true;
   console.log(`игра ${g + 1}: ${((Date.now() - t0) / 1000).toFixed(1)}с · A: ${ov(a)}, шагов ${a.steps}, отказов ${a.denies}, утечек ${a.leaks} · B: ${ov(b)}, отказов ${b.denies}, утечек ${b.leaks}`);
 }
-process.exit(0);
+process.exit(bad ? 1 : 0);

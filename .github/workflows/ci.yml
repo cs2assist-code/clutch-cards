@@ -1,0 +1,66 @@
+# Проверки на каждый push и pull request: типы, симуляция баланса, онлайн (боты, друзья, реванш), обучение и партия в браузере.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: Типы и симуляция
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      - uses: oven-sh/setup-bun@v2
+      - run: npm install --no-audit --no-fund
+      - name: Индексы картинок и голосов
+        run: node scripts/vo-index.mjs && node scripts/art-index.mjs
+      - name: Проверка типов (игра)
+        run: npx tsc --noEmit -p .
+      - name: Проверка сборки сервера
+        run: bun build server/server.ts --target bun --outdir /tmp/server-build
+      - name: Симуляция 100 партий бот против бота
+        run: timeout 300 bun scripts/hs-sim.ts 100 | tail -20
+      - name: Сборка одним файлом
+        run: bash scripts/standalone.sh
+
+  online:
+    name: Онлайн
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - name: Сервер, боты, друзья и реванш
+        run: bash scripts/ci-online.sh
+      - name: Лог сервера
+        if: failure()
+        run: cat server.log || true
+
+  e2e:
+    name: Браузер
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      - uses: oven-sh/setup-bun@v2
+      - run: npm install --no-audit --no-fund && npm install --no-save playwright@1.48.2
+      - run: npx playwright install --with-deps chromium
+      - name: Сборка для проверки
+        run: bash scripts/check-build.sh
+      - name: Обучение и партия с ботом
+        run: |
+          python3 -m http.server 5183 -d .check >/dev/null 2>&1 &
+          sleep 1
+          node tests/e2e.cjs
