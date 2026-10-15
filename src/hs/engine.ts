@@ -36,7 +36,11 @@ export const HS = {
   c4Cost: 3000,
   kitDmg: 4,
   maxArmor: 2,
-  winTo: 2,              // до двух побед (Bo3)
+  winTo: 2,
+  holdBlocksRush: true,  // против «Обороны» Рывок не срабатывает
+  holdNoRushBuff: false, // …или срабатывает, но без бонуса «Раша» +1/+1
+  longTauntBonus: 1,
+  holdTauntHp: 1,        // «Оборона»: здоровье Укрытиям     // «Дальняя игра»: урон по Укрытиям              // до двух побед (Bo3)
 };
 /** Награда за убийство бойца — по классу оружия убийцы, приходит в следующем ходу. */
 export const KILL_REWARD: Partial<Record<HClass, number>> = { pistol: 400, smg: 600, shotgun: 500, rifle: 300, sniper: 300, heavy: 300, token: 300 };
@@ -134,7 +138,9 @@ const shuffle = <T,>(a: T[]) => { for (let i = a.length - 1; i > 0; i--) { const
 const newId = (s: HState, pre = 'u') => `${pre}${++s.seq}`;
 export const heroId = (p: PI) => `h${p}`;
 /** Максимум здоровья героя: у «Обороны» больше. */
-export const maxHp = (agentId: string) => (styleOf(agentId) === 'hold' ? HS.holdHp : HS.heroHp);
+/** Поправки здоровья героя по агенту (баланс). */
+export const AGENT_HP: Record<string, number> = { ct_swat: 3, ct_seal: 3, t_pro: 2 };
+export const maxHp = (agentId: string) => (styleOf(agentId) === 'hold' ? HS.holdHp : HS.heroHp) + (AGENT_HP[agentId] ?? 0);
 export const foe = (p: PI): PI => (p === 0 ? 1 : 0);
 
 // ─────────────────────────── Начало игры ───────────────────────────
@@ -498,10 +504,11 @@ function summon(s: HState, p: PI, id: string, at?: number, mode?: number): HUnit
   if (u.kw.includes('rush') || u.kw.includes('sapper')) u.attacks = u.kw.includes('twice') ? 2 : 1;
   // Пассивные свойства стиля агента
   const st = styleOf(P.hero.agent);
-  if (st === 'rush' && u.kw.includes('rush')) { u.atk += 1; u.hp += 1; u.maxHp += 1; }
+  const vsHold = styleOf(s.p[foe(p)].hero.agent) === 'hold';
+  if (st === 'rush' && u.kw.includes('rush') && !(vsHold && HS.holdNoRushBuff)) { u.atk += 1; u.hp += 1; u.maxHp += 1; }
   // против «Обороны» рывок не срабатывает: бойцы ждут своего хода, как все
-  if (styleOf(s.p[foe(p)].hero.agent) === 'hold' && u.kw.includes('rush')) u.attacks = 0;
-  if (st === 'hold' && u.kw.includes('taunt')) { u.hp += 2; u.maxHp += 2; u.armor = Math.min(HS.maxArmor, u.armor + 1); }
+  if (vsHold && HS.holdBlocksRush && u.kw.includes('rush')) u.attacks = 0;
+  if (st === 'hold' && u.kw.includes('taunt')) { u.hp += HS.holdTauntHp; u.maxHp += HS.holdTauntHp; u.armor = Math.min(HS.maxArmor, u.armor + 1); }
   // «Оборона» держит точки: бомбу у неё закладывают под огнём — тикает на ход дольше
   if (c.kind === 'bomb' && styleOf(s.p[foe(p)].hero.agent) === 'hold') u.bomb += HS.holdBombDelay;
   if (st === 'long' && u.kw.includes('sniper')) u.atk += 1;
@@ -682,7 +689,7 @@ export function isClutch(s: HState, p: PI): boolean {
 /** Доп. урон атакующего бойца по цели: класс, «Трейд», «Клатч». */
 export function attackBonus(s: HState, p: PI, att: HUnit, tgt: HUnit): number {
   return counterBonus(clsOf(att), tgt) + (tgt.marked ? 2 : 0) + (isClutch(s, p) ? 2 : 0)
-    + (styleOf(s.p[p].hero.agent) === 'long' && tgt.kw.includes('taunt') ? 2 : 0);
+    + (styleOf(s.p[p].hero.agent) === 'long' && tgt.kw.includes('taunt') ? HS.longTauntBonus : 0);
 }
 
 /** Доп. урон класса атакующего по цели (для подсказок и боя). */

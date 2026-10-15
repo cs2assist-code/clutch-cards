@@ -99,7 +99,7 @@ export function evaluate(s: HState, p: PI): number {
   return v;
 }
 
-const NOISE: Record<Diff, number> = { easy: 3, normal: 0.8, hard: 0 };
+const NOISE: Record<Diff, number> = { easy: 4, normal: 1.6, hard: 0 };
 
 /** Следующее действие бота или null — заканчивать ход. */
 export function botStep(s: HState, p: PI, diff: Diff): Action | null {
@@ -128,11 +128,20 @@ export function botStep(s: HState, p: PI, diff: Diff): Action | null {
       // играем, только если без него лучшая покупка недоступна
       v = nb - 0.3;
     }
+    // «Сложный» смотрит на шаг дальше: чего стоит это действие вместе с лучшим следующим
+    if (diff === 'hard' && v < 1e5 && c.winner === null && c.turn === p) {
+      let nb = v;
+      for (const b of legalActions(c, p)) {
+        const c2 = structuredClone(c); c2.log = [];
+        if (apply(c2, p, b)) nb = Math.max(nb, evaluate(c2, p));
+      }
+      v = v * 0.4 + nb * 0.6;
+    }
     if (v < 1e5) v += (rand() - 0.5) * NOISE[diff];
     if (v > bestV) { bestV = v; best = a; }
   }
   // Новичок иногда просто заканчивает ход раньше времени
-  if (best && diff === 'easy' && rand() < 0.12 && bestV < 1e5) return null;
+  if (best && diff === 'easy' && rand() < 0.2 && bestV < 1e5) return null;
   // Делать больше нечего — докупить карту в бай-меню, если рука почти пуста
   if (!best && canShop(s, p) && s.p[p].hand.length <= 3 && diff !== 'easy') return { k: 'shop' };
   return best;

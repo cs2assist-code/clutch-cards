@@ -921,7 +921,7 @@ function setupHTML() {
   const detail = (side: Side) => {
     const id = st[side], pw = POWERS[id];
     return `<div class="rm-detail f-${side}"><span>Сила героя <em class="hs-pw">${esc(pw.name)}</em>: ${esc(pw.text)}</span>
-      <small>${esc(STYLE_RU[styleOf(id)].passive)}</small>
+      <small>Герой ${maxHp(id)} HP. ${esc(STYLE_RU[styleOf(id)].passive.replace(/^Герой \d+ HP; /, ''))}</small>
       <small class="hs-sig">Классовые: ${sigCards(id).map((c) => esc(hcard(c).name)).join(', ')}</small></div>`;
   };
   const help = S.help ? `<div class="hs-ov help" data-act="hs-closehelp"><div class="hs-ovbox rm-help" data-act="">

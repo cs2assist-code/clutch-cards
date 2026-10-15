@@ -2,9 +2,10 @@
 //   bun scripts/balance.ts <игр на пару> <часть> <частей> [сложность T] [сложность CT] > out.jsonl
 // Пишет по строке JSON на игру; сводку считает scripts/balance-report.py.
 import { AGENTS, MAPS } from '../src/game/cards';
-import { endTurn, mulligan, newGame, startGame, type Diff, type HState, type PI } from '../src/hs/engine';
+import { endTurn, HS, mulligan, newGame, startGame, type Diff, type HState, type PI } from '../src/hs/engine';
 import { botMulligan, botTurn } from '../src/hs/ai';
 
+if (process.env.HS) Object.assign(HS, JSON.parse(process.env.HS));
 const N = Number(process.argv[2] ?? 20), part = Number(process.argv[3] ?? 0), parts = Number(process.argv[4] ?? 1);
 const dT = (process.argv[5] ?? 'normal') as Diff, dCT = (process.argv[6] ?? 'normal') as Diff;
 const T = AGENTS.filter((a) => a.side === 'T').map((a) => a.id), CT = AGENTS.filter((a) => a.side === 'CT').map((a) => a.id);
