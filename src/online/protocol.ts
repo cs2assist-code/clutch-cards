@@ -5,6 +5,7 @@
 import type { Action } from '../hs/ai';
 import type { Ev, HState, PI } from '../hs/engine';
 import type { Side } from '../game/types';
+import type { KnifeRound, KnifeState, Move } from '../hs/knife';
 
 export const HIDDEN = 'hidden';
 export type Agents = { T: string; CT: string };
@@ -31,6 +32,8 @@ export type C2S =
   | { t: 'duel_create'; agents: Agents }
   | { t: 'duel_join'; code: string; agents: Agents }
   | { t: 'duel_cancel' }
+  | { t: 'knife'; move: Move }
+  | { t: 'side'; side: Side }
   | { t: 'ban'; map: string }
   | { t: 'mull'; uids: string[] }
   | { t: 'act'; a: Action }
@@ -46,6 +49,8 @@ export type S2C =
   | { t: 'queued'; size: number }
   | { t: 'duel_code'; code: string }
   | { t: 'found'; ranked: boolean; opp: { name: string; rating: number; league: string } }
+  /** Ножевой раунд (уже повёрнут: вы — 0). pick: кто выбирает сторону, когда ножи закончились. */
+  | { t: 'knife'; k: KnifeState; picked: boolean; oppPicked: boolean; reveal?: KnifeRound; deadline: number; pick?: 'me' | 'opp'; oppAgents: Agents }
   | { t: 'veto'; maps: string[]; banned: { map: string; mine: boolean }[]; myTurn: boolean; deadline: number; picked?: string }
   | { t: 'start'; map: string; side: Side; myAgent: string; oppAgent: string; view: HState; deadline: number }
   | { t: 'begin'; view: HState; events: Ev[]; deadline: number }

@@ -11,7 +11,7 @@
 //   BOT_TOKEN=...         токен бота — для проверки подписи Telegram initData (обязательно в бою)
 //   ALLOW_DEV=1           пускать без Telegram по имени (для локальной проверки; по умолчанию — только без BOT_TOKEN)
 //   DB=clutch-online.sqlite
-//   TURN_SEC=30 MULL_SEC=30 BAN_SEC=15 GRACE_SEC=60
+//   TURN_SEC=30 MULL_SEC=30 BAN_SEC=15 GRACE_SEC=60 KNIFE_SEC=12 SIDE_SEC=15
 // Новый сезон: bun server/server.ts --new-season "Сезон 2"   (рейтинг сжимается к 1000 наполовину, счёт игр — с нуля)
 import { Database } from 'bun:sqlite';
 import type { ServerWebSocket } from 'bun';
@@ -20,6 +20,7 @@ import { AGENTS, MAPS } from '../src/game/cards';
 import type { Side } from '../src/game/types';
 import { choose, endTurn, mulligan, newGame, setRng, startGame, type HState, type PI } from '../src/hs/engine';
 import { apply } from '../src/hs/ai';
+import { isMove, knifeFor, MOVES, newKnife, resolveKnife, type KnifeRound, type KnifeState, type Move } from '../src/hs/knife';
 import {
   HIDDEN, leagueOf, rotateAction, rotateEv, unrotateAction, validAction, viewFor,
   type Agents, type C2S, type PlayerInfo, type S2C, type StepAction,
@@ -32,6 +33,8 @@ const ALLOW_DEV = env.ALLOW_DEV ? env.ALLOW_DEV === '1' : !BOT_TOKEN;
 const TURN_MS = Number(env.TURN_SEC ?? 30) * 1000;
 const MULL_MS = Number(env.MULL_SEC ?? 30) * 1000;
 const BAN_MS = Number(env.BAN_SEC ?? 15) * 1000;
+const KNIFE_MS = Number(env.KNIFE_SEC ?? 12) * 1000;   // на приём в ножевом раунде
+const SIDE_MS = Number(env.SIDE_SEC ?? 15) * 1000;     // победителю ножей — на выбор стороны
 const GRACE_MS = Number(env.GRACE_SEC ?? 60) * 1000;
 const START_RATING = 1000;
 
@@ -102,7 +105,8 @@ type WS = ServerWebSocket<Conn>;
 interface Seat { id: string; name: string; rating: number; games: number; agents: Agents; ws: WS | null; grace?: ReturnType<typeof setTimeout>; mullDone: boolean }
 interface Room {
   id: number; ranked: boolean; seats: [Seat, Seat];
-  phase: 'veto' | 'mull' | 'play' | 'over';
+  phase: 'knife' | 'side' | 'veto' | 'mull' | 'play' | 'over';
+  knife: KnifeState; picks: [Move | null, Move | null]; sidesSet: boolean;
   maps: string[]; banned: { map: string; by: PI }[]; vetoTurn: PI;
   map: string; sides: [Side, Side]; agents: [string, string];
   s: HState | null; deadline: number; timer?: ReturnType<typeof setTimeout>;
@@ -126,7 +130,8 @@ function validAgents(a: unknown): Agents | null {
 
 function createRoom(a: Omit<Seat, 'mullDone'>, b: Omit<Seat, 'mullDone'>, ranked: boolean) {
   const r: Room = {
-    id: ++roomSeq, ranked, seats: [{ ...a, mullDone: false }, { ...b, mullDone: false }], phase: 'veto',
+    id: ++roomSeq, ranked, seats: [{ ...a, mullDone: false }, { ...b, mullDone: false }], phase: 'knife',
+    knife: newKnife(() => randomInt(0, 1_000_000) / 1_000_000), picks: [null, null], sidesSet: false,
     maps: MAPS.map((m) => m.id), banned: [], vetoTurn: randomInt(0, 2) as PI, map: '', sides: ['T', 'CT'], agents: ['', ''], s: null, deadline: 0,
   };
   for (const st of r.seats) roomOf.set(st.id, r);
@@ -134,6 +139,47 @@ function createRoom(a: Omit<Seat, 'mullDone'>, b: Omit<Seat, 'mullDone'>, ranked
     const o = r.seats[other(p)];
     send(r.seats[p].ws, { t: 'found', ranked, opp: { name: o.name, rating: Math.round(o.rating), league: leagueOf(o.rating).name } });
   }
+  knifeRound(r);
+}
+
+// ── Ножевой раунд: «Удар · Блок · Финт» (src/hs/knife.ts). Победитель выбирает сторону, проигравший первым банит карту ──
+function knifeMsg(r: Room, p: PI, reveal?: KnifeRound): S2C {
+  const k = knifeFor(r.knife, p);
+  const w = r.knife.winner;
+  return {
+    t: 'knife', k, picked: !!r.picks[p], oppPicked: !!r.picks[other(p)], deadline: r.deadline,
+    reveal: reveal ? knifeFor({ ...r.knife, rounds: [reveal] }, p).rounds[0] : undefined,
+    pick: w === null ? undefined : w === p ? 'me' : 'opp', oppAgents: r.seats[other(p)].agents,
+  };
+}
+function knifeRound(r: Room) {
+  r.picks = [null, null];
+  setDeadline(r, KNIFE_MS, () => { for (const p of [0, 1] as PI[]) if (!r.picks[p]) doKnife(r, p, MOVES[randomInt(0, 3)]); });
+  for (const p of [0, 1] as PI[]) send(r.seats[p].ws, knifeMsg(r, p));
+}
+function doKnife(r: Room, p: PI, m: Move) {
+  if (r.phase !== 'knife' || r.picks[p] || !isMove(m)) return;
+  r.picks[p] = m;
+  if (!r.picks[0] || !r.picks[1]) { send(r.seats[other(p)].ws, knifeMsg(r, other(p))); send(r.seats[p].ws, knifeMsg(r, p)); return; }
+  const rv = resolveKnife(r.knife, r.picks[0], r.picks[1]);
+  r.picks = [null, null];
+  if (r.knife.winner !== null) {
+    r.phase = 'side';
+    const w = r.knife.winner;
+    setDeadline(r, SIDE_MS + 2000, () => doSide(r, w, randomInt(0, 2) ? 'T' : 'CT'));
+    for (const q of [0, 1] as PI[]) send(r.seats[q].ws, knifeMsg(r, q, rv));
+    return;
+  }
+  // следующий раунд через паузу, чтобы оба увидели, кто что выбрал
+  setDeadline(r, KNIFE_MS + 1800, () => { for (const q of [0, 1] as PI[]) if (!r.picks[q]) doKnife(r, q, MOVES[randomInt(0, 3)]); });
+  for (const q of [0, 1] as PI[]) send(r.seats[q].ws, knifeMsg(r, q, rv));
+}
+function doSide(r: Room, p: PI, side: Side) {
+  if (r.phase !== 'side' || r.knife.winner !== p || (side !== 'T' && side !== 'CT')) return;
+  r.sides = p === 0 ? [side, sideOther(side)] : [sideOther(side), side];
+  r.sidesSet = true;
+  r.phase = 'veto';
+  r.vetoTurn = other(p);   // проигравший ножи первым убирает карту
   nextVeto(r);
 }
 
@@ -156,8 +202,7 @@ function doBan(r: Room, p: PI, map: string) {
 
 // ── Игра ──
 function startGameIn(r: Room) {
-  const tSeat = randomInt(0, 2) as PI;
-  r.sides = tSeat === 0 ? ['T', 'CT'] : ['CT', 'T'];
+  if (!r.sidesSet) { const tSeat = randomInt(0, 2) as PI; r.sides = tSeat === 0 ? ['T', 'CT'] : ['CT', 'T']; }
   r.agents = [r.seats[0].agents[r.sides[0]], r.seats[1].agents[r.sides[1]]];
   r.s = newGame(r.agents, r.sides, r.map);
   r.s.log = [];
@@ -295,7 +340,8 @@ function onReconnect(ws: WS, r: Room) {
   send(r.seats[other(p)].ws, { t: 'opp_status', online: true });
   const o = r.seats[other(p)];
   send(ws, { t: 'found', ranked: r.ranked, opp: { name: o.name, rating: Math.round(o.rating), league: leagueOf(o.rating).name } });
-  if (r.phase === 'veto') send(ws, vetoMsg(r, p));
+  if (r.phase === 'knife' || r.phase === 'side') send(ws, knifeMsg(r, p, r.knife.rounds[r.knife.rounds.length - 1]));
+  else if (r.phase === 'veto') send(ws, vetoMsg(r, p));
   else send(ws, { t: 'sync', phase: r.phase === 'mull' ? 'mull' : 'play', view: viewFor(r.s!, p), deadline: r.deadline, map: r.map, side: r.sides[p], myAgent: r.agents[p], oppAgent: r.agents[other(p)], mullDone: st.mullDone });
 }
 
@@ -362,6 +408,8 @@ function onMessage(ws: WS, m: C2S) {
   if (!r) return send(ws, { t: 'err', msg: 'Вы не в игре' });
   const p = seatOf(r, u.id);
   switch (m.t) {
+    case 'knife': return doKnife(r, p, m.move);
+    case 'side': return doSide(r, p, m.side);
     case 'ban': return doBan(r, p, String(m.map));
     case 'mull': return doMull(r, p, Array.isArray(m.uids) ? m.uids : []);
     case 'act': return doAct(r, p, m.a, ws);

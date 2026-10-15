@@ -15,6 +15,7 @@ function bot(name: string, idx: number, onCode?: (c: string) => void, joinCode?:
     const ws = new WebSocket(URL);
     const tx = (m: C2S) => ws.send(JSON.stringify(m));
     let started = false;
+    let knifeMsgs = 0;
     let view: HState | null = null, steps = 0, denies = 0, leaks = 0, busy = false;
     const think = () => {
       if (!view || busy || view.turn !== 0 || view.winner !== null) return;
@@ -35,13 +36,17 @@ function bot(name: string, idx: number, onCode?: (c: string) => void, joinCode?:
           else tx({ t: 'queue', agents: AG[idx] });
         } break;
         case 'duel_code': onCode?.(m.code); break;
+        case 'knife':
+          if (m.pick === 'me') tx({ t: 'side', side: Math.random() < 0.5 ? 'T' : 'CT' });
+          else if (!m.picked && m.k.winner === null) setTimeout(() => tx({ t: 'knife', move: (['strike', 'block', 'feint'] as const)[Math.floor(Math.random() * 3)] }), 30);
+          knifeMsgs++; break;
         case 'veto': if (m.myTurn) { const left = m.maps.filter((x) => !m.banned.some((b) => b.map === x)); tx({ t: 'ban', map: left[0] }); } break;
         case 'start': view = m.view; tx({ t: 'mull', uids: [] }); break;
         case 'begin': view = m.view; busy = false; think(); break;
         case 'step': view = m.view; steps++; busy = false; setTimeout(think, 5); break;
         case 'deny': denies++; busy = false; tx({ t: 'end' }); busy = true; break;
         case 'radio': break;
-        case 'over': ws.close(); resolve({ name, result: m, steps, denies, leaks }); break;
+        case 'over': ws.close(); console.log(name, 'ножевых сообщений', knifeMsgs); resolve({ name, result: m, steps, denies, leaks }); break;
         case 'err': console.log(name, 'err', m.msg); break;
       }
     };

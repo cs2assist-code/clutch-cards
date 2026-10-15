@@ -8,6 +8,7 @@ import { preloadVoice, say, setSubtitle, type VoKey } from '../voice';
 import { track } from '../analytics';
 import { recordRound, recordRoundsMatch, markTutorialDone } from '../stats';
 import { SIL } from './art-index';
+import { BEATS, botKnifeMove, KNIFE_HP, MOVE_RU, MOVES, newKnife, resolveKnife, type KnifeRound, type KnifeState, type Move } from './knife';
 import { CLASS_RU, HCARDS, hcard, hImg, unitArt, KW_RU, MAP_RULES, matchup, POWERS, sigCards, STYLE_BEATS, STYLE_RU, styleOf, type HCard, type KW, type Style } from './cards';
 import {
   attackTargets, attackBonus, canAttack, canSave, canShop, costOf, isClutch, isCovered, shopPrice, isBehind, lossBonus, maxHp, endTurn, findUnit, heroId, HS, incomeOf, KILL_REWARD, mulligan, newGame, playTargets, powerTargets, startGame,
@@ -21,12 +22,16 @@ import { haptic } from '../telegram';
 import { questBump, type QuestDef, type QuestKind } from '../quests';
 import { shareResult } from '../share';
 
-type Phase = 'setup' | 'mull' | 'play' | 'gameover' | 'over' | 'cards' | 'rules' | 'lobby' | 'veto' | 'top';
+type Phase = 'setup' | 'knife' | 'sidepick' | 'mull' | 'play' | 'gameover' | 'over' | 'cards' | 'rules' | 'lobby' | 'veto' | 'top';
 type Sel = null | { k: 'hand'; uid: string } | { k: 'atk'; id: string } | { k: 'power' };
 interface GameRes { win: boolean; reason: HState['reason']; side: Side; turns: number }
 const S = {
   phase: 'setup' as Phase,
   setup: { side: 'T' as Side, CT: 'ct_swat', T: 't_phoenix', diff: 'normal' as Diff },
+  /** Сторона в этой партии против бота — её решает ножевой раунд. */
+  side: 'T' as Side,
+  /** Ножевой раунд: дуэль, выбранный приём, открытый итог, агенты бота на обе стороны. */
+  knife: null as null | { k: KnifeState; pick: Move | null; reveal: KnifeRound | null; bot: { T: string; CT: string }; botSide?: Side; online?: { oppPicked: boolean; pick?: 'me' | 'opp'; deadline: number; sideSent?: boolean } },
   s: null as HState | null,
   score: [0, 0] as [number, number],
   game: 1,
@@ -66,7 +71,7 @@ const wait = (ms: number) => new Promise((r) => setTimeout(r, FAST ? 0 : ms));
 const money = (n: number) => '$' + n.toLocaleString('ru-RU');
 const DIFF_RU: Record<Diff, string> = { easy: 'Новичок', normal: 'Обычный', hard: 'Сложный' };
 const other = (x: Side): Side => (x === 'T' ? 'CT' : 'T');
-const mySide = () => (S.on ? S.on.side : S.game % 2 === 1 ? S.setup.side : other(S.setup.side));
+const mySide = () => (S.on ? S.on.side : S.side);
 
 // ─────────────────────────── Ход матча ───────────────────────────
 export function hsOpen(page: 'setup' | 'cards' | 'rules' | 'lobby' = 'setup') {
@@ -83,19 +88,19 @@ function startMatch() {
   S.on = null;
   S.score = [0, 0]; S.game = 1; S.results = [];
   S.journal = [];
-  track('hs_start', { diff: S.setup.diff, side: S.setup.side, ct: S.setup.CT, t: S.setup.T });
+  track('hs_start', { diff: S.setup.diff, side: S.side, ct: S.setup.CT, t: S.setup.T });
   newRound();
 }
 function newRound() {
   const side = mySide();
   const pool = AGENTS.filter((a) => a.side === other(side));
-  S.botAgent = S.tut ? 'ct_swat' : pool[Math.floor(Math.random() * pool.length)].id;
+  S.botAgent = S.tut ? 'ct_swat' : S.knife?.bot[other(side)] ?? pool[Math.floor(Math.random() * pool.length)].id;
   // #map=ancient в адресе — принудительно выбрать карту (для проверки оформления)
   const forced = location.hash.match(/map=(\w+)/)?.[1];
   S.map = S.tut ? 'dust2' : forced && MAPS.some((m) => m.id === forced) ? forced : MAPS[Math.floor(Math.random() * MAPS.length)].id;
   S.s = newGame([S.setup[side], S.botAgent], [side, other(side)], S.map);
   if (S.tut) tutorialDeal(S.s);
-  S.journal.push({ sep: true, text: `Игра ${S.game} · ${mapDef(S.map).name}: ${MAP_RULES[S.map] ?? ''}` });
+  S.journal.push({ sep: true, text: `Матч · ${mapDef(S.map).name}: ${MAP_RULES[S.map] ?? ''}` });
   mulligan(S.s, 1, botMulligan(S.s, 1));
   S.mull = new Set(); S.sel = null; S.info = null; S.busy = false;
   S.phase = 'mull';
@@ -529,7 +534,7 @@ async function finishGame() {
   recordRound(S.setup[mySide()], win, s.p[0].kills);
   questsAtEnd(win, S.setup[mySide()], s.p[0].kills, false);
   track('hs_game', { game: S.game, win, reason: s.reason, side: mySide(), turns: s.p[0].turns, agent: S.setup[mySide()], bot: S.botAgent, diff: S.setup.diff });
-  const done = !!S.tut || S.score[0] >= HS.winTo || S.score[1] >= HS.winTo;
+  const done = true;   // против бота — одна партия: сторону заранее решил ножевой раунд
   if (S.tut) { markTutorialDone(); S.tut.over = true; }
   S.phase = done ? 'over' : 'gameover';
   S.busy = false; S.sel = null;
@@ -538,6 +543,82 @@ async function finishGame() {
     track('hs_end', { win: S.score[0] > S.score[1], score: S.score.join(':'), diff: S.setup.diff });
   }
   hooks.render();
+}
+
+// ─────────────────────────── Ножевой раунд ───────────────────────────
+function startKnife() {
+  const pick = (side: Side) => { const pool = AGENTS.filter((a) => a.side === side); return pool[Math.floor(Math.random() * pool.length)].id; };
+  S.on = null; S.s = null;
+  S.knife = { k: newKnife(), pick: null, reveal: null, bot: { T: pick('T'), CT: pick('CT') } };
+  S.phase = 'knife';
+  preloadShots();
+  hooks.render();
+}
+async function knifePick(m: Move) {
+  const kn = S.knife;
+  if (!kn || kn.pick || kn.k.winner !== null || !MOVES.includes(m)) return;
+  kn.pick = m;
+  if (kn.online) { net.send({ t: 'knife', move: m }); sfx.click(); hooks.render(); return; }
+  const r = resolveKnife(kn.k, m, botKnifeMove(kn.k, 1));
+  kn.reveal = r;
+  weaponShot('knife', 'knife');
+  if (r.winner === 0) haptic.win(); else if (r.winner === 1) haptic.deny();
+  hooks.render();
+  await wait(1500);
+  if (S.knife !== kn) return;
+  kn.pick = null; kn.reveal = null;
+  if (kn.k.winner !== null) {
+    if (kn.k.winner === 1) kn.botSide = Math.random() < 0.5 ? 'T' : 'CT';
+    S.phase = 'sidepick';
+    (kn.k.winner === 0 ? sfx.win : sfx.lose)();
+  }
+  hooks.render();
+}
+const MOVE_ICON: Record<Move, () => string> = {
+  strike: () => silHTML('knife', 'sil kn-ic') || '🔪',
+  block: () => '<svg class="kn-ic" viewBox="0 0 24 24"><path d="M12 2l8 3v6c0 5-3.4 9.2-8 11-4.6-1.8-8-6-8-11V5z" fill="currentColor"/></svg>',
+  feint: () => '<svg class="kn-ic" viewBox="0 0 24 24"><path d="M3 17l5-6 4 4 6-8M14 7h4v4" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+};
+function knifeHTML(): string {
+  if (!S.knife) return `<main class="kn rm"><header class="rm-head"><span></span><span class="rm-title">Ножевой раунд</span><span></span></header><p class="note">Соединяемся…</p></main>`;
+  const kn = S.knife, k = kn.k, rv = kn.reveal, ol = kn.online;
+  const opp = ol && S.on ? esc(S.on.opp.name) : 'Бот';
+  const timer = ol ? ` <b class="hs-timer" data-dl="${ol.deadline}"></b>` : '';
+  const hearts = (n: number) => Array.from({ length: KNIFE_HP }, (_, i) => `<i class="${i < n ? 'on' : ''}"></i>`).join('');
+  const team = (T: string, CT: string, who: string, p: 0 | 1) => `<div class="kn-p p${p} ${rv && rv.winner !== null ? (rv.winner === p ? 'hit' : 'hurt') : ''}">
+      <div class="kn-team"><span class="portrait">${agentArt('T', T)}</span><span class="portrait">${agentArt('CT', CT)}</span></div>
+      <b>${who}</b><span class="kn-hp">${hearts(k.hp[p])}</span>
+      <small>Конёк: <em>${MOVE_RU[k.fav[p]]}</em> ×2</small></div>`;
+  let center = '<span class="kn-vs">VS</span>';
+  if (rv) {
+    const res = rv.winner === null ? 'Ничья — ещё раз' : `${MOVE_RU[rv.picks[rv.winner]]} бьёт ${MOVE_RU[rv.picks[rv.winner === 0 ? 1 : 0]]} · −${rv.dmg}${rv.dmg === 2 ? ' (конёк)' : ''}`;
+    center = `<div class="kn-reveal"><span class="kn-card ${rv.winner === 0 ? 'win' : rv.winner === 1 ? 'lose' : ''}">${MOVE_ICON[rv.picks[0]]()}<b>${MOVE_RU[rv.picks[0]]}</b></span>
+      <span class="kn-card ${rv.winner === 1 ? 'win' : rv.winner === 0 ? 'lose' : ''}">${MOVE_ICON[rv.picks[1]]()}<b>${MOVE_RU[rv.picks[1]]}</b></span></div><p class="kn-res">${res}</p>`;
+  }
+  let bottom: string;
+  if (S.phase === 'sidepick' && ol?.pick === 'opp') {
+    bottom = `<h2 class="kn-title lose">Ножи у соперника</h2><p class="note">${opp} выбирает сторону…${timer}</p><p class="note">Зато вы первым уберёте карту в вето.</p>`;
+  } else if (S.phase === 'sidepick' && ol?.sideSent) {
+    bottom = `<h2 class="kn-title win">Ножи ваши!</h2><p class="note">Сторона выбрана, переходим к вето карт…</p>`;
+  } else if (S.phase === 'sidepick' && k.winner === 0) {
+    bottom = `<h2 class="kn-title win">Ножи ваши!</h2><p class="note">Выберите сторону — дальше одна партия.${timer}</p>
+      <div class="kn-sides"><button class="kn-side t" data-act="hs-pickside" data-v="T"><span class="portrait">${agentArt('T', S.setup.T)}</span><b>T · атака</b><small>Ходите первым, бомба в руке: заложите и удержите 3 хода или снимите героя.</small></button>
+      <button class="kn-side ct" data-act="hs-pickside" data-v="CT"><span class="portrait">${agentArt('CT', S.setup.CT)}</span><b>CT · защита</b><small>Ходите вторым, +1 карта и «Дроп». Обезвредьте бомбу или снимите героя.</small></button></div>`;
+  } else if (S.phase === 'sidepick') {
+    const mine = other(kn.botSide!);
+    bottom = `<h2 class="kn-title lose">Ножи у бота</h2><p class="note">Бот выбрал ${kn.botSide === 'T' ? 'T (атаку)' : 'CT (защиту)'} — вы играете за <b>${mine}</b>.</p>
+      <button class="primary big-btn" data-act="hs-knife-go">В бой за ${mine}</button>`;
+  } else {
+    bottom = `<div class="kn-moves">${MOVES.map((m) => `<button class="kn-move ${kn.pick === m ? 'on' : ''} ${k.fav[0] === m ? 'fav' : ''}" data-act="hs-knife" data-v="${m}" ${kn.pick ? 'disabled' : ''}>
+        ${MOVE_ICON[m]()}<b>${MOVE_RU[m]}</b><small>бьёт «${MOVE_RU[BEATS[m]]}»</small>${k.fav[0] === m ? '<em>×2</em>' : ''}</button>`).join('')}</div>
+      ${ol ? `<p class="note kn-rules">${kn.pick ? (ol.oppPicked ? 'Открываем…' : `Ждём ${opp}…`) : ol.oppPicked ? `${opp} уже выбрал — ваш ход` : 'Выбирайте приём'}${timer}</p>` : ''}
+      <p class="note kn-rules">Тайно выберите приём, ${ol ? 'соперник' : 'бот'} выбирает одновременно. Победа — 1 урон, победа своим коньком — 2. У кого кончатся жизни — проиграл ножи.</p>`;
+  }
+  return `<main class="kn rm">
+    <header class="rm-head">${ol ? '<span></span>' : '<button class="ghost sm" data-act="hs-menu">← Меню</button>'}<span class="rm-title">Ножевой раунд${S.phase === 'knife' ? ` · ${k.round}` : ''}</span><span></span></header>
+    <div class="kn-arena">${team(S.setup.T, S.setup.CT, 'Вы', 0)}<div class="kn-mid">${center}</div>${team(kn.bot.T, kn.bot.CT, opp, 1)}</div>
+    ${bottom}
+  </main>`;
 }
 
 // ─────────────────────────── Нажатия ───────────────────────────
@@ -747,9 +828,14 @@ export function hsClick(a: string, el: HTMLElement): boolean {
     case 'hs-fullrules': S.help = false; S.phase = 'rules'; break;
     case 'hs-open': hsOpen(); return true;
     case 'hs-side': S.setup.side = el.dataset.v as Side; break;
+    case 'hs-knife': void knifePick(el.dataset.v as Move); return true;
+    case 'hs-pickside':
+      if (S.knife?.online) { if (!S.knife.online.sideSent) { S.knife.online.sideSent = true; net.send({ t: 'side', side: el.dataset.v as Side }); sfx.click(); } break; }
+      S.side = el.dataset.v as Side; sfx.click(); startMatch(); return true;
+    case 'hs-knife-go': S.side = other(S.knife!.botSide!); startMatch(); return true;
     case 'hs-diff': S.setup.diff = el.dataset.v as Diff; break;
     case 'hs-agent': S.setup[el.dataset.side as Side] = el.dataset.v!; break;
-    case 'hs-go': S.tut = null; startMatch(); return true;
+    case 'hs-go': S.tut = null; startKnife(); return true;
     case 'hs-tutorial': startTutorial(); return true;
     case 'hs-share': void shareNow(); return true;
     case 'hs-mull': { const u = el.dataset.uid!; if (S.mull.has(u)) S.mull.delete(u); else S.mull.add(u); sfx.click(); break; }
@@ -788,7 +874,6 @@ export function hsClick(a: string, el: HTMLElement): boolean {
     case 'hs-choose': if (s && s.turn === 0 && !S.busy && s.p[0].choice) { void act({ k: 'choose', i: Number(el.dataset.i) }, 0); return true; } break;
     case 'hs-trap': S.info = S.info === el.dataset.v ? null : el.dataset.v!; break;
     case 'hs-end': void playerEndTurn(); return true;
-    case 'hs-next': S.game++; newRound(); return true;
     case 'hs-again': if (S.on) { S.on = null; S.s = null; openLobby(); return true; } hsOpen(); return true;
     case 'hs-lobby': S.on = null; S.s = null; openLobby(); return true;
     case 'hs-queue': S.lobby.err = ''; if (net.send({ t: 'queue', agents: { T: S.setup.T, CT: S.setup.CT } })) { S.lobby.queued = true; sfx.click(); } else S.lobby.err = 'Нет связи с сервером'; break;
@@ -823,6 +908,7 @@ export function hsHTML(): string {
   if (S.phase === 'top') return topHTML();
   if (S.phase === 'cards') return catalogHTML();
   if (S.phase === 'rules') return rulesHTML();
+  if (S.phase === 'knife' || S.phase === 'sidepick') return knifeHTML();
   if (S.phase === 'setup' || !S.s) return setupHTML();
   return boardHTML();
 }
@@ -840,14 +926,13 @@ function setupHTML() {
   };
   const help = S.help ? `<div class="hs-ov help" data-act="hs-closehelp"><div class="hs-ovbox rm-help" data-act="">
       <h3>Коротко о правилах</h3>
-      <p class="note">Снимите герою соперника ${HS.heroHp} HP. Деньги — это мана: ${money(HS.firstIncome)} в первый ход, дальше на ${money(HS.income)} больше. T побеждают и бомбой (она всегда в стартовой руке T), если CT не уничтожат её за ${HS.bombTimer} хода; боец T рядом с бомбой стреляет в сапёров. Матч до ${HS.winTo} побед.</p>
+      <p class="note">Снимите герою соперника ${HS.heroHp} HP. Деньги — это мана: ${money(HS.firstIncome)} в первый ход, дальше на ${money(HS.income)} больше. T побеждают и бомбой (она всегда в стартовой руке T), если CT не уничтожат её за ${HS.bombTimer} хода; боец T рядом с бомбой стреляет в сапёров. Перед партией — ножевой раунд: победитель выбирает сторону.</p>
       ${counterTableHTML()}${stylesHTML()}
       <div class="rm-helpbtns"><button class="ghost" data-act="hs-fullrules">Все правила</button><button class="primary" data-act="hs-closehelp">Понятно</button></div>
     </div></div>` : '';
   return `<main class="rm scroll rm-setup">
     <header class="rm-head"><button class="ghost sm" data-act="hs-menu">← Меню</button><span class="rm-title">Новая игра</span><button class="ghost sm rm-q" data-act="hs-help" title="Справка">?</button></header>
-    <h4 class="sub">Сторона</h4>
-    <div class="seg wide">${(['T', 'CT'] as Side[]).map((x) => `<button class="${x === st.side ? 'on' : ''}" data-act="hs-side" data-v="${x}">${x === 'T' ? 'T — ходите первым' : 'CT — +1 карта'}</button>`).join('')}</div>
+    <p class="rm-knifenote">Сторону решит ножевой раунд: победитель выбирает T или CT, дальше — одна партия. Выберите героя для каждой стороны.</p>
     <h4 class="sub">Сложность</h4>
     <div class="seg wide">${(['easy', 'normal', 'hard'] as Diff[]).map((x) => `<button class="${x === st.diff ? 'on' : ''}" data-act="hs-diff" data-v="${x}">${DIFF_RU[x]}</button>`).join('')}</div>
     <h4 class="sub">Герой CT</h4><div class="rm-agents">${list('CT')}</div>${detail('CT')}
@@ -1043,7 +1128,7 @@ function boardHTML() {
     ${boardScene(S.map)}
     <header class="hs-top">
       ${S.on ? `<button class="ghost sm ${S.on.confirmResign ? 'danger' : ''}" data-act="hs-resign">${S.on.confirmResign ? 'Точно сдаться?' : 'Сдаться'}</button>` : '<button class="ghost sm" data-act="hs-menu">← Меню</button>'}
-      <button class="hs-title" data-act="hs-mapinfo">${S.on ? (S.on.ranked ? 'Рейтинг' : 'Дуэль') : `Игра ${S.game}`} · ${esc(mp.name)} ⓘ</button>
+      <button class="hs-title" data-act="hs-mapinfo">${S.on ? (S.on.ranked ? 'Рейтинг' : 'Дуэль') : 'Матч'} · ${esc(mp.name)} ⓘ</button>
       ${S.on ? `<span class="score on"><b>${esc(S.on.opp.name)}</b>${S.on.oppOnline ? '' : ` <i class="hs-off">не в сети <span class="hs-timer" data-dl="${S.on.graceUntil ?? 0}"></span></i>`}</span>`
         : `<span class="score"><b>Вы ${S.score[0]}</b><i>:</i><b>${S.score[1]} Бот</b></span>`}
     </header>
@@ -1072,7 +1157,7 @@ function mullHTML() {
   const s = S.s!;
   const side = mySide();
   return `<div class="hs-ov"><div class="hs-ovbox">
-    <h3>Игра ${S.game} · вы за ${side}</h3>
+    <h3>Вы за ${side === 'T' ? 'T — атака' : 'CT — защита'}</h3>
     <p class="note">${side === 'T' ? 'Вы ходите первым. ' : 'Вы ходите вторым: на 1 карту больше и «Дроп» (+$1000 на один ход). '}Отметьте карты, которые хотите заменить.</p>
     <div class="hs-mull">${s.p[0].hand.map((c) => `<button class="hc f-${hcard(c.id).side} ${S.mull.has(c.uid) ? 'out' : ''}" data-act="hs-mull" data-uid="${c.uid}">${cardFace(hcard(c.id))}${S.mull.has(c.uid) ? '<em>Заменить</em>' : ''}</button>`).join('')}</div>
     <p class="hs-mapline"><b>${esc(mapDef(S.map).name)}</b> · ${esc(MAP_RULES[S.map] ?? '')}</p>
@@ -1092,12 +1177,11 @@ function overHTML() {
   const why = last.reason === 'bomb' ? 'Бомба взорвалась' : 'Герой повержен';
   return `<div class="hs-ov"><div class="hs-ovbox ${won ? 'win' : 'lose'}">
     <h2>${done ? (won ? 'Матч ваш!' : 'Матч проигран') : (last.win ? 'Победа' : 'Поражение')}</h2>
-    <p class="note">${why} · счёт ${S.score[0]}:${S.score[1]}</p>
+    <p class="note">${last.reason === 'bomb' ? 'Бомба взорвалась' : last.reason === 'defuse' ? 'Бомба обезврежена' : why}</p>
     ${mvpHTML()}
-    <ol class="hs-res">${S.results.map((r, i) => `<li class="${r.win ? 'w' : 'l'}">Игра ${i + 1} · за ${r.side} · ${r.win ? 'победа' : 'поражение'} · ${r.reason === 'bomb' ? 'бомба' : 'герой'} · ${r.turns} ход.</li>`).join('')}</ol>
+    <p class="note">Вы играли за ${last.side} · ${last.turns} ход.</p>
     ${S.tut ? '<p class="note">Обучение пройдено! Дальше — обычные матчи с ботом или онлайн.</p>' : ''}
-    ${done ? `${S.tut ? '' : '<button class="primary big-btn" data-act="hs-again">Ещё матч</button>'}<button class="${S.tut ? 'primary big-btn' : 'ghost'}" data-act="hs-share">Поделиться</button><button class="ghost" data-act="hs-menu">В меню</button>`
-      : `<button class="primary big-btn" data-act="hs-next">Игра ${S.game + 1} · вы за ${S.game % 2 === 1 ? other(S.setup.side) : S.setup.side}</button>`}
+    ${S.tut ? '' : '<button class="primary big-btn" data-act="hs-again">Ещё матч</button>'}<button class="${S.tut ? 'primary big-btn' : 'ghost'}" data-act="hs-share">Поделиться</button><button class="ghost" data-act="hs-menu">В меню</button>
   </div></div>`;
 }
 
@@ -1320,11 +1404,33 @@ async function onNet(m: S2C) {
       L.queued = false; L.duel = null; L.err = '';
       S.on = { ranked: m.ranked, opp: m.opp, side: 'T', myAgent: '', oppAgent: '', deadline: 0, oppOnline: true, mullSent: false, confirmResign: false };
       S.score = [0, 0]; S.game = 1; S.results = []; S.journal = []; S.s = null;
-      S.phase = 'veto';
+      S.knife = null; S.phase = 'knife';
       haptic.win(); sfx.turn();
       break;
+    case 'knife': {
+      if (!S.on) return;
+      const prev = S.knife;
+      const kn = S.knife = { k: m.k, pick: m.picked ? prev?.pick ?? null : null, reveal: prev?.reveal ?? null, bot: m.oppAgents,
+        online: { oppPicked: m.oppPicked, pick: m.pick, deadline: m.deadline, sideSent: prev?.online?.sideSent } };
+      S.on.deadline = m.deadline;
+      if (m.reveal) {
+        kn.reveal = m.reveal; kn.pick = null;
+        weaponShot('knife', 'knife');
+        if (m.reveal.winner === 0) haptic.win(); else if (m.reveal.winner === 1) haptic.deny();
+        S.phase = 'knife';
+        hooks.render();
+        await wait(1500);
+        if (S.knife !== kn) return;
+        kn.reveal = null;
+      }
+      S.phase = m.pick ? 'sidepick' : 'knife';
+      if (m.pick && m.reveal) (m.pick === 'me' ? sfx.win : sfx.lose)();
+      break;
+    }
     case 'veto': {
       if (!S.on) return;
+      S.knife = null;
+      if (S.phase === 'knife' || S.phase === 'sidepick') S.phase = 'veto';
       const was = S.on.veto?.myTurn;
       S.on.veto = m; S.on.deadline = m.deadline;
       if (m.myTurn && !was) { sample('ann_ban_1_map'); haptic.tap(); }
@@ -1495,7 +1601,7 @@ function agentPickHTML() {
     `<button class="rm-agent f-${side} ${st[side] === a.id ? 'on' : ''}" data-act="hs-agent" data-side="${side}" data-v="${a.id}">
       <span class="portrait xs">${agentArt(side, a.id)}</span><b>${esc(a.name)}</b>${styleTag(styleOf(a.id))}</button>`).join('');
   return `<h4 class="sub">Герой за CT</h4><div class="rm-agents">${list('CT')}</div><h4 class="sub">Герой за T</h4><div class="rm-agents">${list('T')}</div>
-    <p class="note">Сторону выбирает жребий; карту — вето: вы с соперником по очереди вычёркиваете карты.</p>`;
+    <p class="note">Сначала ножевой раунд: победитель выбирает сторону, проигравший первым вычёркивает карту в вето. Дальше — одна партия.</p>`;
 }
 
 function lobbyHTML() {
@@ -1629,6 +1735,7 @@ type TutState = { step: number; over: boolean; next: boolean; free: boolean };
 function startTutorial() {
   S.tut = { step: 0, over: false, next: false, free: false };
   S.setup = { ...S.setup, side: 'T', T: 't_phoenix', CT: 'ct_swat', diff: 'easy' };
+  S.side = 'T'; S.knife = null;
   startMatch();
   tutLoop();
 }
