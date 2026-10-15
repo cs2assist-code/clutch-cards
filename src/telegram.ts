@@ -35,11 +35,14 @@ export function initTelegram(bg: string) {
 
 export const userName = () => tg()?.initDataUnsafe?.user?.first_name ?? 'Игрок';
 
+// Вне Telegram (обычный браузер на Android) — короткая вибрация через navigator.vibrate
+const vib = (p: number | number[]) => safe(() => { if (!tg()?.HapticFeedback && 'vibrate' in navigator) navigator.vibrate(p); });
+const VIB: Record<Haptic, number> = { light: 8, soft: 8, medium: 14, rigid: 18, heavy: 26 } as Record<Haptic, number>;
 export const haptic = {
   tap: () => safe(() => tg()?.HapticFeedback?.selectionChanged()),
-  hit: (s: Haptic = 'medium') => safe(() => tg()?.HapticFeedback?.impactOccurred(s)),
-  win: () => safe(() => tg()?.HapticFeedback?.notificationOccurred('success')),
-  lose: () => safe(() => tg()?.HapticFeedback?.notificationOccurred('error')),
+  hit: (s: Haptic = 'medium') => { safe(() => tg()?.HapticFeedback?.impactOccurred(s)); vib(VIB[s] ?? 14); },
+  win: () => { safe(() => tg()?.HapticFeedback?.notificationOccurred('success')); vib([12, 60, 12]); },
+  lose: () => { safe(() => tg()?.HapticFeedback?.notificationOccurred('error')); vib([30, 50, 30]); },
   deny: () => safe(() => tg()?.HapticFeedback?.notificationOccurred('warning')),
 };
 

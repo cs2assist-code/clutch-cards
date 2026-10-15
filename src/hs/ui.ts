@@ -300,6 +300,7 @@ async function playEvents(evs: Ev[], sn: fx.Snapshot, p: PI) {
         turnKills = [0, 0]; spotted = false; kctx = null;
         sfx.turn();
         fx.banner(e.p === 0 ? 'Ваш ход' : 'Ход соперника', 'turn', 900);
+        if (e.p === 0) { haptic.hit('medium'); const f = document.createElement('div'); f.className = 'turnflash'; document.body.appendChild(f); setTimeout(() => f.remove(), 1100); }
         await wait(e.p === 0 ? 650 : 400);
         break;
       case 'play': {
@@ -368,13 +369,15 @@ async function playEvents(evs: Ev[], sn: fx.Snapshot, p: PI) {
         if (a && b) fx.shot(a, b, kind);
         const mode = findUnit(S.s!, e.from)?.u.mode;
         weaponShot(u ?? 'knife', kind, mode === 1);
+        haptic.hit(kind === 'sniper' ? 'rigid' : 'light');
         await wait(120);
         break;
       }
       case 'dmg': {
         const r = rectOf(e.id, sn);
         if (r) fx.splash(r, `−${e.n}${e.bonus ? '!' : ''}`, 'damage');
-        if (r && e.hs) { fx.headshot(r); sfx.dink(); }
+        if (r && e.hs) { fx.headshot(r); sfx.dink(); haptic.hit('heavy'); }
+        else if (e.id === 'h0') haptic.hit('medium');
         if (r && e.wb) setTimeout(() => fx.splash(new DOMRect(r.x - 16, r.y - 22, r.width, r.height), 'прострел', 'block'), 140);
         if (e.wb) wbHit.add(e.id);
         if (kctx?.from) {
@@ -394,6 +397,7 @@ async function playEvents(evs: Ev[], sn: fx.Snapshot, p: PI) {
       case 'blind': { const r = rectOf(e.id, sn); if (r) fx.burst(r, 'zap'); await wait(80); break; }
       case 'die': {
         const g = sn.get(e.id); if (g) fx.death(g);
+        haptic.hit('medium');
         lastDie = g?.rect ?? null;
         const vCard = findUnitAny(e.id, sn);
         if (vCard && hcard(vCard).kind !== 'bomb') {
@@ -448,7 +452,7 @@ async function playEvents(evs: Ev[], sn: fx.Snapshot, p: PI) {
         await wait(700); break;
       }
       case 'bomb': if (e.left < HS.bombTimer) { c4.beep(e.left <= 1); fx.banner(`До взрыва: ${e.left}`, 'bomb', 900); await wait(700); } break;
-      case 'boom': c4.boom(); fx.quake(hooks.root.querySelector('.hs')); fx.banner('Бомба взорвалась', 'bomb', 1400); await wait(1100); break;
+      case 'boom': c4.boom(); haptic.hit('heavy'); setTimeout(() => haptic.hit('heavy'), 160); fx.quake(hooks.root.querySelector('.hs')); fx.banner('Бомба взорвалась', 'bomb', 1400); await wait(1100); break;
       case 'defused': c4.defuseStart(); await fx.progress('Разминирование', 700, 'defuse'); c4.defused(); speak('bombdef', 'hq'); fx.banner('Бомба обезврежена', 'defuse', 1300); await wait(900); break;
       case 'entry': { const r = rectOf(e.id, sn); if (r) fx.splash(r, 'энтри', 'heal'); if (e.p === 0) fx.cash(elOf('cash0')?.getBoundingClientRect() ?? r ?? new DOMRect(), 'Энтри-фраг'); await wait(250); break; }
       case 'mark': { const r = rectOf(e.id, sn); if (r) fx.splash(r, 'трейд', 'miss'); await wait(150); break; }
