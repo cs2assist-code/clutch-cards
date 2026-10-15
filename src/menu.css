@@ -99,3 +99,9 @@
 
 @media (max-height: 700px) and (max-width: 899px) { .km-main { padding-top: 22vh; } .km-lede { display: none; } }
 @media (prefers-reduced-motion: reduce) { .km-art img, .km-art.one, .km-play::after { animation: none; } }
+.km-rank { display: flex; align-items: center; gap: 6px; padding: 4px 10px 4px 5px; height: 34px; border-radius: 3px; color: var(--km-fg); font-size: 12px;
+  background: var(--km-panel); border: 1px solid var(--km-line); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); white-space: nowrap; }
+.km-rank:not(:has(.lvl)) { padding-left: 10px; }
+.km-rank b { font: 700 15px 'Oswald', var(--km-head); }
+.km-rank:hover { border-color: rgba(255,255,255,.22); }
+.km-play small { display: flex; align-items: center; gap: 6px; text-transform: none; letter-spacing: .02em; }

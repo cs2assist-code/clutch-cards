@@ -7,7 +7,7 @@ import { loadStats, resetStats, stats } from './stats';
 import { sfx, soundOn, toggleSound, unlock as unlockSound } from './sound';
 import { toggleVoice, voiceEnabled } from './voice';
 import { analyticsOn, toggleAnalytics, track } from './analytics';
-import { hsClick, hsHTML, hsInit, hsJoinDuel, hsOpen } from './hs/ui';
+import { hsClick, hsLevelBadge, hsLevelProgress, hsProfile, hsHTML, hsInit, hsJoinDuel, hsOpen } from './hs/ui';
 import { loadQuests, questView } from './quests';
 import { startDuelCode } from './online/client';
 import { agentArt, cssUrl, esc } from './art';
@@ -48,6 +48,7 @@ const portrait = (side: 't' | 'ct', id: string) => (globalThis as { __CARD_IMG?:
 
 function menuHTML() {
   const q = questView();
+  const me = hsProfile();
   const done = q.list.filter((x) => x.done).length;
   const key = uiImg('menu_key');
   // Ключевой арт: готовая картинка ui_menu_key.webp, а пока её нет — два бойца T и CT по краям
@@ -58,7 +59,8 @@ function menuHTML() {
     ${art}
     <header class="km-top">
       <div class="km-logo"><i></i><b>КЛАТЧ</b><small>CS2 · карточная тактика</small></div>
-      <div class="km-me">${stats.games ? `<span><b>${stats.wins}</b> побед · <b>${stats.games}</b> игр</span>` : '<span>Новый игрок</span>'}
+      <div class="km-me">${me ? `<button class="km-rank" data-act="rating" title="Рейтинг">${hsLevelBadge(me.rating, 'xs')}<span><b>${me.rating}</b> Elo</span></button>`
+        : `<button class="km-rank" data-act="rating"><span>Рейтинг</span></button>`}
         <button class="km-icon ${ui.settingsOpen ? 'on' : ''}" data-act="settings" aria-label="Настройки">${ICON.gear}</button></div>
     </header>
     ${ui.settingsOpen ? `<div class="km-settings">
@@ -73,9 +75,9 @@ function menuHTML() {
         <h1>Собери стол.<br>Выиграй клатч.</h1>
         <p class="km-lede">Бойцы с оружием CS2, гранаты, бомба и экономика раундов — в карточной дуэли на 5 минут.</p>
       </div>
-      <button class="km-play" data-act="hs-enter"><span>${ICON.play}</span><b>Играть</b><small>против бота</small></button>
+      <button class="km-play" data-act="online"><span>${ICON.play}</span><b>Играть</b><small>${me ? `${hsLevelBadge(me.rating, 'xs')}${esc(hsLevelProgress(me.rating))}` : 'онлайн · рейтинг'}</small></button>
       <div class="km-modes">
-        <button class="km-mode ct" data-act="online"><img src="${esc(portrait('ct', 'awp'))}" alt=""><span><b>Онлайн</b><small>Рейтинг · дуэль по ссылке</small></span></button>
+        <button class="km-mode ct" data-act="hs-enter"><img src="${esc(portrait('ct', 'awp'))}" alt=""><span><b>С ботом</b><small>Тренировка без рейтинга</small></span></button>
         <button class="km-mode t ${stats.tutorialDone ? '' : 'hot'}" data-act="tutorial"><img src="${esc(portrait('t', 'glock'))}" alt=""><span><b>Обучение</b><small>${stats.tutorialDone ? 'Пройдено · повторить' : 'Первый матч с подсказками'}</small></span></button>
       </div>
       <button class="km-quests" data-act="quests">
@@ -175,7 +177,7 @@ function render() {
   if (sc) sc.scrollTop = scroll;
 }
 
-hsInit({ render: () => render(), menu: () => go('menu'), root });
+hsInit({ render: () => render(), menu: () => go('menu'), root, onMenu: () => ui.screen === 'menu' });
 render();
 // Приглашение на дуэль (ссылка t.me/<бот>/<app>?startapp=duel_КОД) — сразу в лобби и в дуэль
 const duel = startDuelCode();

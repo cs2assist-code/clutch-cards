@@ -64,7 +64,7 @@ interface OnlineMatch {
   result?: Extract<S2C, { t: 'over' }>;
 }
 
-let hooks = { render: () => {}, menu: () => {}, root: document.body as HTMLElement };
+let hooks = { render: () => {}, menu: () => {}, root: document.body as HTMLElement, onMenu: () => false };
 export function hsInit(h: typeof hooks) { hooks = h; setupDrag(); }
 const FAST = location.hash.includes('fast');
 const wait = (ms: number) => new Promise((r) => setTimeout(r, FAST ? 0 : ms));
@@ -1384,13 +1384,22 @@ const ANN_PICK = new Set(['ancient', 'dust2', 'inferno', 'mirage', 'nuke']);   /
 let netQueue: Promise<void> = Promise.resolve();
 let netReady = false;
 
+function netInit() {
+  if (netReady) return;
+  netReady = true;
+  net.onMessage((m) => { netQueue = netQueue.then(() => onNet(m)).catch((e) => console.error(e)); });
+  net.onStatus(() => { if (S.phase === 'lobby' || S.phase === 'rating' || hooks.onMenu()) hooks.render(); });
+}
+/** Для главного меню: тихо подключиться к серверу, чтобы показать рейтинг. null — сервер не настроен или ещё нет ответа. */
+export function hsProfile(): PlayerInfo | null {
+  if (!S.lobby.me && net.serverUrl() && net.onlineStatus.state === 'offline' && !menuTried) { menuTried = true; netInit(); net.connect(); }
+  return S.lobby.me;
+}
+let menuTried = false;
+export { levelBadge as hsLevelBadge, levelProgress as hsLevelProgress };
 function openLobby(page: 'lobby' | 'rating' = 'lobby') {
   S.phase = page; S.s = null; S.on = null; S.info = null; S.lobby.err = '';
-  if (!netReady) {
-    netReady = true;
-    net.onMessage((m) => { netQueue = netQueue.then(() => onNet(m)).catch((e) => console.error(e)); });
-    net.onStatus(() => { if (S.phase === 'lobby' || S.phase === 'rating') hooks.render(); });
-  }
+  netInit();
   if (!net.connect()) S.lobby.err = 'Сервер онлайна не настроен (константа SERVER в src/online/client.ts).';
   else if (page === 'rating') { net.send({ t: 'profile' }); net.send({ t: 'top' }); }
   hooks.render();
