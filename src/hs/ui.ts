@@ -11,10 +11,10 @@ import { SIL } from './art-index';
 import { BEATS, botKnifeMove, KNIFE_HP, MOVE_RU, MOVES, newKnife, resolveKnife, type KnifeRound, type KnifeState, type Move } from './knife';
 import { CLASS_RU, HCARDS, hcard, hImg, unitArt, KW_RU, MAP_RULES, matchup, POWERS, sigCards, STYLE_BEATS, STYLE_RU, styleOf, type HCard, type KW, type Style } from './cards';
 import {
-  attackTargets, attackBonus, canAttack, canSave, canShop, costOf, isClutch, isCovered, shopPrice, isBehind, lossBonus, maxHp, endTurn, findUnit, heroId, HS, incomeOf, KILL_REWARD, bombGuarded, mulligan, newGame, playTargets, powerTargets, startGame,
+  attackTargets, attackBonus, canAttack, canSave, canShop, costOf, isClutch, isCovered, shopPrice, isBehind, lossBonus, maxHp, endTurn, canEco, eco, type EcoPick, findUnit, heroId, HS, incomeOf, KILL_REWARD, bombGuarded, mulligan, newGame, playTargets, powerTargets, startGame,
   type Diff, type Ev, type HState, type HUnit, type PI,
 } from './engine';
-import { apply, botMulligan, botStep, legalActions, type Action } from './ai';
+import { apply, botEnd, botMulligan, botStep, legalActions, type Action } from './ai';
 import { boardEmblem, boardScene, boardVars } from './boards';
 import * as net from '../online/client';
 import { LEVELS, levelOf, prizePlaces, type HistRow, type PeerRow, type PlayerInfo, type S2C, type SeasonPrizes } from '../online/protocol';
@@ -71,7 +71,9 @@ let hooks = { render: () => {}, menu: () => {}, root: document.body as HTMLEleme
 export function hsInit(h: typeof hooks) { hooks = h; setupDrag(); }
 const FAST = location.hash.includes('fast');
 const wait = (ms: number) => new Promise((r) => setTimeout(r, FAST ? 0 : ms));
-const money = (n: number) => '$' + n.toLocaleString('ru-RU');
+/** Деньги в тысячах, через запятую: 5300 → «$5,3», 600 → «$0,6». */
+const kilo = (n: number) => (n / 1000).toLocaleString('ru-RU', { maximumFractionDigits: 2 });
+const money = (n: number) => '$' + kilo(n);
 const DIFF_RU: Record<Diff, string> = { easy: 'Новичок', normal: 'Обычный', hard: 'Сложный' };
 const other = (x: Side): Side => (x === 'T' ? 'CT' : 'T');
 const mySide = () => (S.on ? S.on.side : S.side);
@@ -235,7 +237,7 @@ function cashTick() {
   requestAnimationFrame(cashTick);
 }
 requestAnimationFrame(cashTick);
-const moneyHTML = (n: number) => `<em>$</em>${n.toLocaleString('ru-RU')}`;
+const moneyHTML = (n: number) => `<em>$</em>${kilo(n)}`;
 
 // ─────────────────────────── Действия ───────────────────────────
 const elOf = (id: string) => hooks.root.querySelector<HTMLElement>(`[data-hid="${CSS.escape(id)}"]`);
@@ -467,6 +469,7 @@ async function playEvents(evs: Ev[], sn: fx.Snapshot, p: PI) {
         break;
       }
       case 'save': sfx.click(); await wait(200); break;
+      case 'eco': sfx.buy(); fx.banner(`${e.p === 0 ? 'Эко раунд' : 'Соперник играет эко'}: ${e.pick === 'cards' ? `+${HS.ecoCards} карты` : `+${money(HS.ecoCash)} в след. ход`}`, e.p === 0 ? 'defuse' : 'info', 1300); await wait(700); break;
     }
   }
 }
@@ -479,14 +482,18 @@ function findUnitAny(id: string, sn: fx.Snapshot): string | null {
 const boardRects = (p: PI) => [...hooks.root.querySelectorAll<HTMLElement>(`.hs-board.b${p} [data-hid]`)].map((el) => el.getBoundingClientRect());
 const foeBoardRects = (p: PI) => boardRects(p === 0 ? 1 : 0);
 
-async function playerEndTurn() {
+/** Эко-раунд доступен: ничего не сыграно за ход (в пошаговом обучении — нет). */
+const ecoReady = () => !!S.s && myTurn() && canEco(S.s, 0) && !(S.tut && !S.tut.free);
+async function playerEndTurn(pick?: EcoPick) {
   const s = S.s!;
   if (S.busy || s.turn !== 0 || s.winner !== null) return;
-  if (S.on) { S.sel = null; S.info = null; resetPend(); S.busy = true; net.send({ t: 'end' }); hooks.render(); return; }
+  if (pick && !canEco(s, 0)) pick = undefined;
+  if (pick) track('eco', { pick, turn: s.p[0].turns, online: !!S.on });
+  if (S.on) { S.sel = null; S.info = null; resetPend(); S.busy = true; net.send(pick ? { t: 'end', eco: pick } : { t: 'end' }); hooks.render(); return; }
   S.sel = null; S.info = null; S.busy = true; resetPend();
   rememberNames(s);
   s.log = [];
-  endTurn(s);
+  if (pick) eco(s, 0, pick); else endTurn(s);
   const evs = drain();
   logEvents(evs, 1);
   hooks.render();
@@ -511,7 +518,7 @@ async function botTurn() {
   if (s.winner !== null) return finishGame();
   rememberNames(s);
   s.log = [];
-  endTurn(s);
+  botEnd(s, 1);
   const evs = drain();
   logEvents(evs, 0);
   hooks.render();
@@ -886,7 +893,8 @@ export function hsClick(a: string, el: HTMLElement): boolean {
     case 'hs-shop': if (s && myTurn() && canShop(s, 0)) { void act({ k: 'shop' }, 0); return true; } sfx.deny(); S.info = 'shopinfo'; break;
     case 'hs-choose': if (s && s.turn === 0 && !S.busy && s.p[0].choice) { void act({ k: 'choose', i: Number(el.dataset.i) }, 0); return true; } break;
     case 'hs-trap': S.info = S.info === el.dataset.v ? null : el.dataset.v!; break;
-    case 'hs-end': void playerEndTurn(); return true;
+    case 'hs-end': if (ecoReady() && !S.busy) { S.sel = null; resetPend(); S.info = 'eco'; sfx.click(); break; } void playerEndTurn(); return true;
+    case 'hs-eco': S.info = null; void playerEndTurn(el.dataset.v as EcoPick); return true;
     case 'hs-again': if (S.on) { S.on = null; S.s = null; openLobby(); return true; } hsOpen(); return true;
     case 'hs-lobby': S.on = null; S.s = null; openLobby(); return true;
     case 'hs-queue': S.lobby.err = ''; if (net.send({ t: 'queue', agents: { T: S.setup.T, CT: S.setup.CT } })) { S.lobby.queued = true; queuedAt = Date.now(); track('online_queue', { elo: S.lobby.me?.rating ?? 0 }); sfx.click(); } else S.lobby.err = 'Нет связи с сервером'; break;
@@ -1158,25 +1166,40 @@ function boardHTML() {
       ${S.on ? `<span class="score on"><b>${esc(S.on.opp.name)}</b>${S.on.oppOnline ? '' : ` <i class="hs-off">не в сети <span class="hs-timer" data-dl="${S.on.graceUntil ?? 0}"></span></i>`}</span>`
         : `<span class="score"><b>Вы ${S.score[0]}</b><i>:</i><b>${S.score[1]} Бот</b></span>`}
     </header>
-    <div class="hs-backs" style="--back:url('${esc(cssUrl(backImg(other(mySide()))))}')">${backs}</div>
     ${heroHTML(1, tg)}
+    <div class="hs-backs" style="--back:url('${esc(cssUrl(backImg(other(mySide()))))}')">${backs}</div>
     <div class="hs-board b1 ${zoneCls('b1')}" style="--n:${HS.board}">${en.board.map((u) => unitHTML(u, 1, tg)).join('') || '<span class="hs-empty"></span>'}</div>
     <div class="hs-mid ${S.on ? 'has-tb' : ''}">${S.on ? turnBombHTML() : ''}${boardEmblem(S.map)}
       <span class="hs-midl">${bomb ? `<span class="hs-bomb">C4 · ${bomb.bomb}</span>` : ''}<button class="hs-logbtn" data-act="hs-log">Журнал · ход ${Math.ceil(s.turnNo / 2)}</button>${S.on ? radioHTML() : ''}</span>
       <span class="hs-status">${s.turn === 0 && !S.busy ? 'Ваш ход' : esc(S.last || (s.turn === 0 ? '…' : 'Ход соперника'))}</span>
-      <button class="hs-end ${idle ? 'idle' : ''}" data-act="hs-end" ${myTurn() ? '' : 'disabled'}>${s.turn === 0 ? 'Конец хода' : 'Ждите'}</button>
+      ${ecoReady() ? '<button class="hs-end eco" data-act="hs-end" title="Вы ничего не сыграли: возьмите 2 карты или деньги на следующий ход">Эко раунд</button>'
+        : `<button class="hs-end ${idle ? 'idle' : ''}" data-act="hs-end" ${myTurn() ? '' : 'disabled'}>${s.turn === 0 ? 'Конец хода' : 'Ждите'}</button>`}
     </div>
     <div class="hs-board b0 ${playStage() === 'place' ? 'placing' : ''} ${zoneCls('b0')}" style="--n:${HS.board}">${playStage() === 'place'
       ? [...me.board.map((u, i) => `<button class="hs-slot" data-act="hs-slot" data-i="${i}" aria-label="Поставить сюда">+</button>${unitHTML(u, 0, tg)}`), `<button class="hs-slot" data-act="hs-slot" data-i="${me.board.length}" aria-label="Поставить сюда">+</button>`].join('')
       : me.board.map((u) => unitHTML(u, 0, tg)).join('') || (zones().b0 ? '<span class="hs-empty">Поставьте карту сюда</span>' : '<span class="hs-empty"></span>')}</div>
-    ${heroHTML(0, tg)}
     <div class="hs-hand" style="--ov:${ov.toFixed(1)}px">${hand}</div>
+    ${heroHTML(0, tg)}
     ${infoHTML()}
     ${S.showLog ? journalHTML() : ''}
     ${S.phase === 'play' && s.turn === 0 && me.choice && !S.busy ? choiceHTML() : ''}
     ${S.phase === 'mull' ? mullHTML() : ''}
+    ${S.info === 'eco' && ecoReady() ? ecoHTML() : ''}
     ${S.phase === 'gameover' || S.phase === 'over' ? overHTML() : ''}
   </main>`;
+}
+
+function ecoHTML() {
+  const P = S.s!.p[0];
+  return `<div class="hs-ov eco-ov"><div class="hs-ovbox eco-box">
+    <h3>Эко раунд</h3>
+    <p class="note">В этом ходу вы ничего не купили и не выставили. Сэкономьте — выберите награду, ход перейдёт сопернику.</p>
+    <div class="eco-opts">
+      <button class="eco-opt" data-act="hs-eco" data-v="cards" ${P.hand.length >= HS.hand ? 'disabled' : ''}><b>+${HS.ecoCards}</b><span>карты в руку сейчас, деньги переносятся как обычно</span>${P.hand.length + HS.ecoCards > HS.hand ? '<small>лишние сгорят — рука до 7</small>' : ''}</button>
+      <button class="eco-opt cash" data-act="hs-eco" data-v="cash"><b>+${money(HS.ecoCash)}</b><span>к деньгам следующего хода</span>${P.money ? `<small>вместо переноса ${money(Math.min(P.money, HS.carry))}</small>` : ''}</button>
+    </div>
+    <button class="ghost" data-act="hs-cancel">Ещё подумаю</button>
+  </div></div>`;
 }
 
 function mullHTML() {
@@ -1184,7 +1207,7 @@ function mullHTML() {
   const side = mySide();
   return `<div class="hs-ov"><div class="hs-ovbox">
     <h3>Вы за ${side === 'T' ? 'T — атака' : 'CT — защита'}</h3>
-    <p class="note">${side === 'T' ? 'Вы ходите первым. ' : 'Вы ходите вторым: на 1 карту больше и «Дроп» (+$1000 на один ход). '}Отметьте карты, которые хотите заменить.</p>
+    <p class="note">${side === 'T' ? 'Вы ходите первым. ' : 'Вы ходите вторым: на 1 карту больше и «Дроп» (+$1 на один ход). '}Отметьте карты, которые хотите заменить.</p>
     <div class="hs-mull">${s.p[0].hand.map((c) => `<button class="hc f-${hcard(c.id).side} ${S.mull.has(c.uid) ? 'out' : ''}" data-act="hs-mull" data-uid="${c.uid}">${cardFace(hcard(c.id))}${S.mull.has(c.uid) ? '<em>Заменить</em>' : ''}</button>`).join('')}</div>
     <p class="hs-mapline"><b>${esc(mapDef(S.map).name)}</b> · ${esc(MAP_RULES[S.map] ?? '')}</p>
     ${matchupHTML(styleOf(S.setup[side]), styleOf(S.botAgent))}
@@ -1272,7 +1295,7 @@ function rulesHTML() {
     </ul>
     <h4 class="sub">Награды</h4>
     <ul class="hs-ul">
-      <li>За убийство — деньги в следующем ходу ($300–600 по классу оружия).</li>
+      <li>За убийство — деньги в следующем ходу ($0,3–0,6 по классу оружия).</li>
       <li>Убийство делает бойца ветераном ★ с бонусом своего класса.</li>
       <li>Если убитый не нанёс ни единицы урона, его оружие уходит вам в руку трофеем — бесплатно.</li>
     </ul>
@@ -1281,7 +1304,8 @@ function rulesHTML() {
     <h4 class="sub">Механики из CS</h4>
     <ul class="hs-ul">
       <li><b>Позиция.</b> Ставя бойца, выбирайте место: дробь и флешка задевают соседей, бойцы рядом с Укрытием не видны вражеским снайперам (значок щита).</li>
-      <li><b>Энтри.</b> Первое убийство бойцом в ваш ход — +$300 в следующем ходу (у «Раша» +$600 и +1 атаки бойцу).</li>
+      <li><b>Энтри.</b> Первое убийство бойцом в ваш ход — +$0,3 в следующем ходу (у «Раша» +$0,6 и +1 атаки бойцу).</li>
+      <li><b>Эко раунд.</b> Ничего не сыграли за ход (ни карты, ни бай-меню, ни силы героя) — со второго хода вместо «Конец хода» горит «Эко раунд»: на выбор +2 карты сразу (деньги переносятся как обычно) или +$3 к деньгам следующего хода вместо переноса.</li>
       <li><b>Трейд.</b> Кто убил вашего бойца, помечен: ваши бойцы бьют его на 2 сильнее до конца вашего следующего хода.</li>
       <li><b>Клатч.</b> Ваш последний боец против двух и больше бьёт на 2 сильнее.</li>
       <li><b>Сейв.</b> Раз в ход можно увести бойца, который не стрелял и не вышел в этом ходу, — карта вернётся в руку.</li>
@@ -1357,6 +1381,7 @@ function logEvents(evs: Ev[], p: PI, a?: Action) {
       case 'trap': flush(); out.push({ text: `Засада «${hcard(e.card).name}» (${e.p === 0 ? 'ваша' : 'соперника'})` }); break;
       case 'trophy': add(e.burned ? `трофей ${hcard(e.card).name} сгорел` : `${sv(e.p, 'получаете', 'получает')} трофей ${hcard(e.card).name}`); break;
       case 'save': flush(); out.push({ text: `${who(e.p)}: сейв — ${hcard(e.card).name} возвращается в руку` }); break;
+      case 'eco': flush(); out.push({ text: `${who(e.p)}: эко раунд — ${e.pick === 'cards' ? `+${HS.ecoCards} карты` : `+${money(HS.ecoCash)} в след. ход`}` }); break;
       case 'cash': if (e.loss) { flush(); out.push({ text: `${who(e.p)}: бонус за отставание +${money(e.n)}` }); } break;
       case 'shop': flush(); out.push({ text: `${sv(e.p, 'покупаете', 'покупает')} карту в бай-меню` }); break;
       case 'fizzle': add(`«${hcard(e.card).name}» не сработала`); break;
@@ -2014,7 +2039,7 @@ const TUT_STEPS: TutStep[] = [
   { id: 'money2', info: true, text: () => `Не потратили — до ${money(HS.carry)} перейдёт на следующий ход, остальное сгорит. Под суммой написано, сколько добавится в следующий ход: доход плюс награды.`,
     target: () => '#cash0 .hs-next', done: () => false },
   // ── Карта ──
-  { id: 'anatomy', info: true, text: 'Как читать карту: зелёная плашка — цена в тысячах (1,5 = $1500), жёлтый овал — атака, сердце — здоровье, значок по центру — класс оружия. Любую карту можно нажать и прочитать её свойства.',
+  { id: 'anatomy', info: true, text: 'Как читать карту: зелёная плашка — цена; все деньги в игре — в тысячах долларов (1,5 = $1 500), жёлтый овал — атака, сердце — здоровье, значок по центру — класс оружия. Любую карту можно нажать и прочитать её свойства.',
     target: () => handSel(handUid('tec9')) ?? '.hs-hand .hc', done: () => false },
   { id: 'unit', text: 'Выставьте бойца: перетащите Tec-9 из руки на свой ряд — или нажмите его, затем «На стол».',
     target: () => playFlow('tec9'), allow: () => playAllow('tec9'), done: () => me0().board.some((u) => u.card === 'tec9'), need: () => !!handUid('tec9') },
@@ -2031,7 +2056,7 @@ const TUT_STEPS: TutStep[] = [
     target: () => (S.sel?.k === 'atk' ? '.tgt' : (() => { const u = me0().board.find((x) => canAttack(S.s!, 0, x.uid)); return u ? `[data-hid="${u.uid}"]` : null; })()),
     allow: () => ['.tgt', ...me0().board.filter((x) => canAttack(S.s!, 0, x.uid)).map((x) => `[data-hid="${x.uid}"]`)],
     done: () => me0().board.some((u) => u.shot), need: () => me0().board.some((u) => canAttack(S.s!, 0, u.uid) && attackTargets(S.s!, 0, u.uid).length > 0) },
-  { id: 'rewards', info: true, text: () => `Награды приходят в следующий ход. За убийство — по классу оружия убийцы: пистолет ${money(KILL_REWARD.pistol!)}, ПП ${money(KILL_REWARD.smg!)}, дробовик ${money(KILL_REWARD.shotgun!)}, винтовка, снайперка и пулемёт ${money(KILL_REWARD.rifle!)}. Первое убийство за ход (энтри) — ещё $300, у «Раша» $600.`,
+  { id: 'rewards', info: true, text: () => `Награды приходят в следующий ход. За убийство — по классу оружия убийцы: пистолет ${money(KILL_REWARD.pistol!)}, ПП ${money(KILL_REWARD.smg!)}, дробовик ${money(KILL_REWARD.shotgun!)}, винтовка, снайперка и пулемёт ${money(KILL_REWARD.rifle!)}. Первое убийство за ход (энтри) — ещё $0,3, у «Раша» $0,6.`,
     target: () => '#cash0', done: () => false },
   { id: 'lossbonus', info: true, text: () => `Бонус за отставание, как в CS: если у вашего героя на ${HS.lossGap}+ здоровья меньше, чем у соперника, каждый такой ход подряд даёт +${money(HS.lossStep)} (до +${money(HS.lossStep * HS.lossMax)}). Закладка бомбы — T +${money(HS.plantBonus)} (Phoenix ${money(1300)}), обезвреживание — CT +${money(HS.defuseBonus)}.`,
     target: () => '#cash0', done: () => false },
@@ -2039,7 +2064,7 @@ const TUT_STEPS: TutStep[] = [
   // ── Ход 3: гранаты, снаряжение, бай-меню, сила героя ──
   { id: 'nades', info: true, text: 'Гранаты: HE — 3 урона всем бойцам врага; молотов и зажигательная — 4 урона и горение; флешка — боец и соседи пропустят атаку и не ответят; дым — снайперы и пулемёты врага пропустят атаку; Zeus — 4 урона сквозь броню, бьёт и бомбу.',
     target: () => handSel(handUid('flash') ?? handUid('he')), done: () => false },
-  { id: 'gear', info: true, text: 'Снаряжение: бронежилет — +1 брони и здоровья, шлем — то же и защита от хедшота, аптечка — +4 здоровья, буст — +2 атаки, «Дроп» — сразу +$1000. Броня режет урон пистолетов, ПП, дробовиков и гранат, но не винтовок и снайперок.',
+  { id: 'gear', info: true, text: 'Снаряжение: бронежилет — +1 брони и здоровья, шлем — то же и защита от хедшота, аптечка — +4 здоровья, буст — +2 атаки, «Дроп» — сразу +$1. Броня режет урон пистолетов, ПП, дробовиков и гранат, но не винтовок и снайперок.',
     target: () => null, done: () => false },
   { id: 'shop', info: true, text: () => `Бай-меню под деньгами: за ${money(HS.shopCost)} выбрать 1 из ${HS.shopChoice} карт, каждая следующая покупка за ход дороже на ${money(HS.shopCost)}. А в начале хода вы открываете 2 верхние карты колоды и берёте одну.`,
     target: () => '.hs-shopbtn', done: () => false },

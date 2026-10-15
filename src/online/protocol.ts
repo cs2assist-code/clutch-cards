@@ -55,7 +55,7 @@ export type C2S =
   | { t: 'ban'; map: string }
   | { t: 'mull'; uids: string[] }
   | { t: 'act'; a: Action }
-  | { t: 'end' }
+  | { t: 'end'; eco?: 'cards' | 'cash' }
   | { t: 'radio'; key: string }
   | { t: 'resign' }
   | { t: 'top' }

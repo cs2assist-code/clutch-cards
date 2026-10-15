@@ -22,7 +22,7 @@ import { readFileSync, statSync } from 'node:fs';
 import { corsPreflight, initAnalytics, statsCsv, statsPage } from './analytics';
 import { AGENTS, MAPS } from '../src/game/cards';
 import type { Side } from '../src/game/types';
-import { choose, endTurn, mulligan, newGame, setRng, startGame, type HState, type PI } from '../src/hs/engine';
+import { canEco, choose, eco, endTurn, mulligan, newGame, setRng, startGame, type HState, type PI } from '../src/hs/engine';
 import { apply } from '../src/hs/ai';
 import { isMove, knifeFor, MOVES, newKnife, resolveKnife, type KnifeRound, type KnifeState, type Move } from '../src/hs/knife';
 import {
@@ -342,12 +342,12 @@ function doAct(r: Room, p: PI, raw: unknown, ws: WS) {
   if (card && s.log.some((e) => e.t === 'play' && e.card === 'trap')) card = 'trap';
   broadcastStep(r, p, a, card);
 }
-function doEnd(r: Room, p: PI) {
+function doEnd(r: Room, p: PI, ecoPick?: unknown) {
   const s = r.s;
   if (r.phase !== 'play' || !s || s.turn !== p || s.winner !== null) return;
   s.log = [];
-  if (s.p[p].choice) choose(s, p, 0);
-  endTurn(s);
+  if ((ecoPick === 'cards' || ecoPick === 'cash') && canEco(s, p)) eco(s, p, ecoPick);
+  else { if (s.p[p].choice) choose(s, p, 0); endTurn(s); }
   if (s.winner === null) setTurnTimer(r);
   broadcastStep(r, p, { k: 'end' });
 }
@@ -552,7 +552,7 @@ function onMessage(ws: WS, m: C2S) {
     case 'ban': return doBan(r, p, String(m.map));
     case 'mull': return doMull(r, p, Array.isArray(m.uids) ? m.uids : []);
     case 'act': return doAct(r, p, m.a, ws);
-    case 'end': return doEnd(r, p);
+    case 'end': return doEnd(r, p, m.eco);
     case 'resign': if (r.phase !== 'over') finish(r, other(p), 'resign'); return;
     case 'radio': {
       // Радиокоманды вместо чата: только готовые фразы и не чаще раза в 2,5 с

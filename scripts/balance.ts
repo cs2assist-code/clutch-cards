@@ -3,7 +3,7 @@
 // Пишет по строке JSON на игру; сводку считает scripts/balance-report.py.
 import { AGENTS, MAPS } from '../src/game/cards';
 import { endTurn, HS, mulligan, newGame, startGame, type Diff, type HState, type PI } from '../src/hs/engine';
-import { botMulligan, botTurn } from '../src/hs/ai';
+import { botEnd, botMulligan, botTurn } from '../src/hs/ai';
 
 if (process.env.HS) Object.assign(HS, JSON.parse(process.env.HS));
 const N = Number(process.argv[2] ?? 20), part = Number(process.argv[3] ?? 0), parts = Number(process.argv[4] ?? 1);
@@ -24,7 +24,7 @@ for (const t of T) for (const ct of CT) for (let i = 0; i < N; i++, k++) {
     botTurn(s, s.turn, s.turn === 0 ? dT : dCT);
     for (const e of s.log) if (e.t === 'play') played[e.p].add(e.card);
     s.log = [];
-    if (s.winner === null) endTurn(s);
+    if (s.winner === null) botEnd(s, s.turn);
     for (const e of s.log) if (e.t === 'play') played[e.p].add(e.card);
     s.log = [];
   }

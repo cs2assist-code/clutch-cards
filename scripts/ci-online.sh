@@ -10,7 +10,7 @@ trap 'kill $SRV 2>/dev/null || true' EXIT
 for i in $(seq 1 30); do grep -q "ws://" server.log 2>/dev/null && break; sleep 0.5; done
 URL=ws://localhost:$PORT/ws
 timeout 300 bun server/test-bots.ts $URL 1
-timeout 300 bun server/test-bots.ts $URL 1 duel
+FORCE_ECO=1 timeout 300 bun server/test-bots.ts $URL 1 duel
 timeout 120 bun tests/online-social.ts $URL
 curl -sf localhost:$PORT/health
 echo; echo "онлайн: OK"

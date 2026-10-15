@@ -1,7 +1,7 @@
 // Баланс «Схватки»: бот против бота. bun scripts/hs-sim.ts 300 [diff]
 import { AGENTS } from '../src/game/cards';
 import { endTurn, HS, mulligan, newGame, startGame, type HState, type PI } from '../src/hs/engine';
-import { botMulligan, botTurn } from '../src/hs/ai';
+import { botEnd, botMulligan, botTurn } from '../src/hs/ai';
 import { hcard, styleOf } from '../src/hs/cards';
 import type { Diff } from '../src/hs/engine';
 
@@ -29,7 +29,7 @@ for (let g = 0; g < N; g++) {
     const P = s.p[s.turn], m0 = P.money;
     botTurn(s, s.turn, diff);
     if (P.turns >= 8) { late.n++; late.left += P.money; late.wasted += Math.max(0, P.money - HS.carry); late.hand += P.hand.length; late.spent += m0 - P.money; late.board += P.board.length; if (P.board.length >= HS.board) late.full++; if (P.hand.some((c) => !c.free && hcard(c.id).cost > P.money && (hcard(c.id).kind !== 'unit' || P.board.length < HS.board))) late.blocked++; }
-    if (s.winner === null) endTurn(s);
+    if (s.winner === null) botEnd(s, s.turn);
   }
   if (s.log.some((e) => e.t === 'defused')) defuse++;
   const tWin = s.winner === 0;

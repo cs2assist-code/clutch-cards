@@ -2,7 +2,7 @@
 // и делает лучшее по оценке позиции. Нет действия лучше текущей позиции — конец хода.
 import { COUNTER, hcard } from './cards';
 import {
-  attack, attackTargets, canAttack, canSave, canShop, choose, clsOf, isCovered, save, shop, foe, heroId, HS, playCard, playTargets, powerTargets, rand, usePower,
+  attack, attackTargets, canAttack, canEco, eco, endTurn, canSave, canShop, choose, clsOf, isCovered, save, shop, foe, heroId, HS, playCard, playTargets, powerTargets, rand, usePower,
   type Diff, type HState, type HUnit, type PI,
 } from './engine';
 
@@ -153,6 +153,12 @@ export function botMulligan(s: HState, p: PI): string[] {
 }
 
 /** Целиком сыграть ход бота (для симуляций). */
+/** Конец хода бота: если ничего не сыграл — эко-раунд (мало карт — карты, иначе деньги). */
+export function botEnd(s: HState, p: PI) {
+  if (canEco(s, p)) eco(s, p, s.p[p].hand.length <= 3 ? 'cards' : 'cash');
+  else endTurn(s);
+}
+
 export function botTurn(s: HState, p: PI, diff: Diff) {
   for (let i = 0; i < 40 && s.winner === null && s.turn === p; i++) {
     const a = botStep(s, p, diff);

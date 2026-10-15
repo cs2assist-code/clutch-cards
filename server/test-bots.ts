@@ -16,14 +16,19 @@ function bot(name: string, idx: number, onCode?: (c: string) => void, joinCode?:
     const tx = (m: C2S) => ws.send(JSON.stringify(m));
     let started = false;
     let knifeMsgs = 0;
+    let ecos = 0;
     let view: HState | null = null, steps = 0, denies = 0, leaks = 0, busy = false;
     const think = () => {
       if (!view || busy || view.turn !== 0 || view.winner !== null) return;
       // секреты соперника не должны приходить
       if (view.p[1].hand.some((c) => c.id !== 'hidden') || view.p[1].deck.some((d) => d !== 'hidden')) leaks++;
+      // FORCE_ECO=1 — на 2-м ходу сразу эко-раунд (проверка пути через сервер)
+      if (process.env.FORCE_ECO && view.p[0].turns === 2 && !view.p[0].played && !view.p[0].choice) { ecos++; busy = true; tx({ t: 'end', eco: 'cash' }); return; }
       const a = botStep(view, 0, 'normal');
       busy = true;
-      if (a) tx({ t: 'act', a }); else tx({ t: 'end' });
+      if (a) tx({ t: 'act', a });
+      else if (!view.p[0].played && view.p[0].turns >= 2 && !view.p[0].choice) { ecos++; tx({ t: 'end', eco: view.p[0].hand.length <= 3 ? 'cards' : 'cash' }); }   // эко-раунд через сервер
+      else tx({ t: 'end' });
     };
     ws.onopen = () => tx({ t: 'hello', dev: name, name });
     ws.onmessage = async (ev) => {
@@ -46,7 +51,7 @@ function bot(name: string, idx: number, onCode?: (c: string) => void, joinCode?:
         case 'step': view = m.view; steps++; busy = false; setTimeout(think, 5); break;
         case 'deny': denies++; busy = false; tx({ t: 'end' }); busy = true; break;
         case 'radio': break;
-        case 'over': ws.close(); console.log(name, 'ножевых сообщений', knifeMsgs); resolve({ name, result: m, steps, denies, leaks }); break;
+        case 'over': ws.close(); console.log(name, 'ножевых сообщений', knifeMsgs, 'эко-раундов', ecos); resolve({ name, result: m, steps, denies, leaks }); break;
         case 'err': console.log(name, 'err', m.msg); break;
       }
     };

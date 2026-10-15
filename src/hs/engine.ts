@@ -35,7 +35,12 @@ export const HS = {
   guardMax: 1,           // …стреляет сильнейший из соседей
   c4InHand: true,        // у T всегда есть бомба: она лежит в стартовой руке
   kitInHand: false,      // …а у CT — набор сапёра
-  defuseBonus: 2000,     // CT за обезвреженную бомбу — в следующем ходу
+  defuseBonus: 2000,
+  eco: true,             // «Эко-раунд»: ничего не сыграли за ход — на выбор 2 карты или деньги в следующем ходу
+  ecoCards: 2,
+  ecoCash: 3000,
+  ecoMinTurn: 2,         // как в CS: пистолетный (первый) раунд эко не бывает
+  ecoKeepsCarry: false,  // эко деньгами «съедает» перенос: несыгранные деньги этого хода не переходят дальше (с картами — переходят)     // CT за обезвреженную бомбу — в следующем ходу
   holdBombDelay: 0,      // против «Обороны» бомба тикает на столько ходов дольше
   holdNoGuard: true,     // «Оборона» разминирует под прикрытием: охрана бомбы в неё не стреляет
   c4Cost: 3000,
@@ -94,6 +99,8 @@ export interface HPlayer {
   lossStreak: number;   // сколько своих ходов подряд начинали, отставая
   entry: boolean;       // «Энтри»: первое убийство в этом ходу уже было
   saved: boolean;       // «Сейв» уже был в этом ходу
+  played: boolean;      // в этом ходу сыграна карта, бай-меню или сила героя (тогда эко-раунда нет)
+  ecos: number;         // сколько эко-раундов сыграно
 }
 
 export type Ev =
@@ -121,7 +128,9 @@ export type Ev =
   | { t: 'entry'; p: PI; id: string }
   | { t: 'mark'; id: string }
   | { t: 'clutch'; id: string }
-  | { t: 'save'; p: PI; card: string; id: string };
+  | { t: 'save'; p: PI; card: string; id: string }
+  | { t: 'eco'; p: PI; pick: EcoPick };
+export type EcoPick = 'cards' | 'cash';
 
 export interface HState {
   p: [HPlayer, HPlayer];
@@ -156,7 +165,7 @@ export const foe = (p: PI): PI => (p === 0 ? 1 : 0);
 export function newGame(agents: [string, string], sides: [Side, Side], map = 'dust2'): HState {
   const mk = (i: PI): HPlayer => ({
     hero: { hp: maxHp(agents[i]), armor: sides[i] === 'CT' ? HS.ctArmor : 0, atk: 0, attacked: false, agent: agents[i], side: sides[i] },
-    hand: [], deck: shuffle(agentDeck(agents[i], rnd)), board: [], traps: [], money: 0, bonus: 0, turns: 0, powerUsed: false, shopUsed: 0, choice: null, pool: shopPool(agents[i]), fatigue: 0, kills: 0, lossStreak: 0, entry: false, saved: false,
+    hand: [], deck: shuffle(agentDeck(agents[i], rnd)), board: [], traps: [], money: 0, bonus: 0, turns: 0, powerUsed: false, shopUsed: 0, choice: null, pool: shopPool(agents[i]), fatigue: 0, kills: 0, lossStreak: 0, entry: false, saved: false, played: false, ecos: 0,
   });
   const first: PI = sides[0] === 'T' ? 0 : 1;
   const s: HState = { p: [mk(0), mk(1)], turn: first, first, winner: null, reason: '', log: [], seq: 0, turnNo: 0, map };
@@ -212,6 +221,7 @@ export function shop(s: HState, p: PI): boolean {
   if (!canShop(s, p)) return false;
   const P = s.p[p];
   P.money -= shopPrice(P);
+  P.played = true;
   P.shopUsed++;
   const pool = P.pool.filter((id) => !P.hand.some((c) => c.id === id));
   const opts: string[] = [];
@@ -273,7 +283,7 @@ function beginTurn(s: HState, p: PI) {
   P.turns++;
   P.powerUsed = false;
   P.shopUsed = 0;
-  P.entry = false; P.saved = false;
+  P.entry = false; P.saved = false; P.played = false;
   P.hero.atk = 0; P.hero.attacked = false;
   s.log.push({ t: 'turn', p });
   // Огонь
@@ -305,6 +315,24 @@ function beginTurn(s: HState, p: PI) {
   }
   drawChoice(s, p);
   cleanup(s);
+}
+
+/** Эко-раунд: за ход не сыграно ни одной карты, не открыто бай-меню и не использована сила героя. */
+export function canEco(s: HState, p: PI): boolean {
+  const P = s.p[p];
+  return HS.eco && s.turn === p && s.winner === null && !P.choice && !P.played && P.turns >= HS.ecoMinTurn;
+}
+/** Закончить ход эко-раундом: взять карты сейчас или получить деньги в следующем ходу. */
+export function eco(s: HState, p: PI, pick: EcoPick): boolean {
+  if (!canEco(s, p) || (pick !== 'cards' && pick !== 'cash')) return false;
+  const P = s.p[p];
+  P.ecos++;
+  s.log.push({ t: 'eco', p, pick });
+  if (pick === 'cash' && !HS.ecoKeepsCarry) P.money = 0;   // сэкономленное превращается в награду, а не копится сверху
+  if (pick === 'cards') for (let k = 0; k < HS.ecoCards; k++) draw(s, p);
+  else P.bonus += HS.ecoCash;
+  endTurn(s);
+  return true;
 }
 
 export function endTurn(s: HState) {
@@ -554,6 +582,7 @@ export function playCard(s: HState, p: PI, uid: string, target?: string, at?: nu
   }
   if (c.modes && (mode === undefined || mode < 0 || mode >= c.modes.length)) mode = 0;
   if (!inst.free) P.money -= costOf(s, c.id);
+  P.played = true;
   P.hand = P.hand.filter((x) => x !== inst);
   const en = s.p[foe(p)];
   if (c.kind === 'trap') {
@@ -621,7 +650,7 @@ export function playCard(s: HState, p: PI, uid: string, target?: string, at?: nu
       s.log.push({ t: 'buff', id: x.uid, text: '+1' });
     } break;
     case 'ba_wall': for (const x of [...en.board]) if (!isBomb(x)) { damageUnit(s, x, 1 + hb + (clsOf(x) === 'cover' ? 3 : 0), { src: 'fire' }); x.burn = fire; } break;
-    case 'pr_contract': P.bonus += 2000; s.log.push({ t: 'buff', id: heroId(p), text: '+$2000 в след. ход' }); break;
+    case 'pr_contract': P.bonus += 2000; s.log.push({ t: 'buff', id: heroId(p), text: '+$2 в след. ход' }); break;
   }
   cleanup(s, { p, cls: 'spell' });
   return true;
@@ -640,6 +669,7 @@ export function usePower(s: HState, p: PI, target?: string): boolean {
   if (!t || (t.length && (!target || !t.includes(target)))) return false;
   const P = s.p[p];
   P.money -= POWERS[P.hero.agent].cost;
+  P.played = true;
   P.powerUsed = true;
   s.log.push({ t: 'power', p, target });
   const tu = target ? findUnit(s, target)?.u : undefined;
