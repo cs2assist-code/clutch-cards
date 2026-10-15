@@ -193,6 +193,7 @@ location /clutch-stats/ {
 - Тактики — официальные наклейки CS: Wallbang, Roosty Boosty, T Rush, Clutchman, Ninja Defuse, Full Buy.
 
 - Портреты бойцов с оружием (агенты CS2 держат стандартные стволы, сгенерированы по референсам): `public/img/u_<t|ct>_<id>.webp`, 384×512. Нейтральное оружие берёт портрет стороны владельца. Список собирает `scripts/art-index.mjs` (запускается перед dev/build и в `standalone.sh`) — новую картинку достаточно положить в папку.
+- Главное меню (`src/menu.css`) в стиле CS2. Ключевой арт меню — `public/img/ui_menu_key.webp` (вертикальный, 1080×1440); пока его нет, по краям стоят портреты бойцов T и CT.
 - Рубашки карт сторон: `public/img/back_t.webp`, `back_ct.webp`.
 - Силуэты оружия для килфида и значков классов: `public/img/sil_<id>.webp` — белые маски, делаются из картинок оружия командой `python3 scripts/make-sil.py`.
 

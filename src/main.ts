@@ -7,10 +7,12 @@ import { loadStats, resetStats, stats } from './stats';
 import { sfx, soundOn, toggleSound, unlock as unlockSound } from './sound';
 import { toggleVoice, voiceEnabled } from './voice';
 import { analyticsOn, toggleAnalytics, track } from './analytics';
-import { hsClick, hsFanHTML, hsHTML, hsInit, hsJoinDuel, hsOpen } from './hs/ui';
+import { hsClick, hsHTML, hsInit, hsJoinDuel, hsOpen } from './hs/ui';
 import { loadQuests, questView } from './quests';
 import { startDuelCode } from './online/client';
 import { agentArt, cssUrl, esc } from './art';
+import { UI_IMG } from './hs/art-index';
+import './menu.css';
 import * as fx from './fx';
 import { haptic, initTelegram, setBackButton } from './telegram';
 
@@ -35,31 +37,55 @@ const ICON = {
 const DIFF_RU: Record<string, string> = { easy: 'Новичок', normal: 'Обычный', hard: 'Сложный' };
 
 // ─────────────────────────── Экраны ───────────────────────────
+/** Картинка оформления: public/img/ui_<id>.webp, если её положили; иначе null. */
+function uiImg(id: string): string | null {
+  if (!UI_IMG.has(id)) return null;
+  return (globalThis as { __CARD_IMG?: Record<string, string> }).__CARD_IMG?.[`ui_${id}`] ?? `img/ui_${id}.webp`;
+}
+const portrait = (side: 't' | 'ct', id: string) => (globalThis as { __CARD_IMG?: Record<string, string> }).__CARD_IMG?.[`u_${side}_${id}`] ?? `img/u_${side}_${id}.webp`;
+
 function menuHTML() {
-  return `<main class="menu" style="--menu-bg:url('${esc(cssUrl(mapDef('dust2').image))}')">
-    <button class="gearbtn ${ui.settingsOpen ? 'on' : ''}" data-act="settings" aria-label="Настройки">${ICON.gear}</button>
-    ${ui.settingsOpen ? `<div class="settings">
+  const q = questView();
+  const done = q.list.filter((x) => x.done).length;
+  const key = uiImg('menu_key');
+  // Ключевой арт: готовая картинка ui_menu_key.webp, а пока её нет — два бойца T и CT по краям
+  const art = key
+    ? `<div class="km-art one" style="--key:url('${esc(cssUrl(key))}')"></div>`
+    : `<div class="km-art"><img class="t" src="${esc(portrait('t', 'ak47'))}" alt=""><img class="ct" src="${esc(portrait('ct', 'm4a4'))}" alt=""></div>`;
+  return `<main class="km" style="--menu-bg:url('${esc(cssUrl(mapDef('dust2').image))}')">
+    ${art}
+    <header class="km-top">
+      <div class="km-logo"><i></i><b>КЛАТЧ</b><small>CS2 · карточная тактика</small></div>
+      <div class="km-me">${stats.games ? `<span><b>${stats.wins}</b> побед · <b>${stats.games}</b> игр</span>` : '<span>Новый игрок</span>'}
+        <button class="km-icon ${ui.settingsOpen ? 'on' : ''}" data-act="settings" aria-label="Настройки">${ICON.gear}</button></div>
+    </header>
+    ${ui.settingsOpen ? `<div class="km-settings">
       <button class="toggle ${soundOn() ? 'on' : ''}" data-act="sound" aria-pressed="${soundOn()}"><i></i>Звуки</button>
       <button class="toggle ${voiceEnabled() ? 'on' : ''}" data-act="voice" aria-pressed="${voiceEnabled()}"><i></i>Радиокоманды</button>
       <button class="toggle ${analyticsOn() ? 'on' : ''}" data-act="analytics" aria-pressed="${analyticsOn()}"><i></i>Анонимная статистика для разработчика</button>
       <small class="note">Без имени и Telegram-ID: только какие шаги проходят игроки.</small>
     </div>` : ''}
-    ${hsFanHTML()}
-    <header class="brand">
-      <p class="eyebrow">Карточная тактика по CS2</p>
-      <h1>КЛАТЧ</h1>
-      <span class="split"></span>
-      <p class="lede">Соберите стол из бойцов, контрите оружие соперника, закладывайте бомбу или обезвреживайте её. Колода, рука и герои — как в Hearthstone.</p>
-    </header>
-    <button class="primary big-btn playbtn" data-act="hs-enter">${ICON.play}Играть с ботом</button>
-    <button class="ghost big-btn onlinebtn" data-act="online">${ICON.globe}Онлайн · рейтинг и дуэли</button>
-    <div class="tiles">
-      <button class="tile ${stats.tutorialDone ? '' : 'hot'}" data-act="tutorial">${ICON.grad}<b>Обучение</b><small>${stats.tutorialDone ? 'Пройдено' : 'Первый матч с подсказками'}</small></button>
-      <button class="tile" data-act="quests">${ICON.target}<b>Задания</b><small>${(() => { const q = questView(); return `${q.list.filter((x) => x.done).length} из ${q.list.length} сегодня`; })()}</small></button>
-      <button class="tile" data-act="hs-page" data-to="rules">${ICON.help}<b>Как играть</b><small>Правила и «кто кого»</small></button>
-      <button class="tile" data-act="hs-page" data-to="cards">${ICON.cards}<b>Все карты</b><small>Оружие, гранаты, засады</small></button>
-      <button class="tile wide" data-act="stats">${ICON.chart}<b>Статистика</b><small>${stats.games ? `${stats.wins} побед из ${stats.games}` : 'Пока пусто'}</small></button>
-    </div>
+    <section class="km-main">
+      <div class="km-hero">
+        <p class="km-eyebrow"><span class="t">T</span> против <span class="ct">CT</span></p>
+        <h1>Собери стол.<br>Выиграй клатч.</h1>
+        <p class="km-lede">Бойцы с оружием CS2, гранаты, бомба и экономика раундов — в карточной дуэли на 5 минут.</p>
+      </div>
+      <button class="km-play" data-act="hs-enter"><span>${ICON.play}</span><b>Играть</b><small>против бота</small></button>
+      <div class="km-modes">
+        <button class="km-mode ct" data-act="online"><img src="${esc(portrait('ct', 'awp'))}" alt=""><span><b>Онлайн</b><small>Рейтинг · дуэль по ссылке</small></span></button>
+        <button class="km-mode t ${stats.tutorialDone ? '' : 'hot'}" data-act="tutorial"><img src="${esc(portrait('t', 'glock'))}" alt=""><span><b>Обучение</b><small>${stats.tutorialDone ? 'Пройдено · повторить' : 'Первый матч с подсказками'}</small></span></button>
+      </div>
+      <button class="km-quests" data-act="quests">
+        <span class="km-qhead"><b>Задания дня</b><small>${done} из ${q.list.length}${q.streak ? ` · серия ${q.streak}` : ''}</small></span>
+        ${q.list.map((x) => `<span class="km-q ${x.done ? 'done' : ''}"><em>${esc(x.text)}</em><i style="--p:${(x.prog / x.goal).toFixed(3)}"></i></span>`).join('')}
+      </button>
+      <nav class="km-nav">
+        <button data-act="hs-page" data-to="rules">${ICON.help}<b>Как играть</b></button>
+        <button data-act="hs-page" data-to="cards">${ICON.cards}<b>Все карты</b></button>
+        <button data-act="stats">${ICON.chart}<b>Статистика</b></button>
+      </nav>
+    </section>
   </main>`;
 }
 

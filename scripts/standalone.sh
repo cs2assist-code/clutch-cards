@@ -25,7 +25,7 @@ html = html.replace('</head>', '<style>' + css + '</style>\n</head>')
 pathlib.Path('dist-standalone.html').write_text(html)
 print('ok', len(html))
 # Вариант для публикации артефактом (без обёртки html/head и без SDK Telegram)
-fonts = '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;600;700&family=Russo+One&family=Yeseva+One&display=swap">'
+fonts = '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&family=Oswald:wght@500;600;700&family=Russo+One&family=Yeseva+One&display=swap">'
 art = '<title>Клатч</title>\n' + fonts + '\n<style>' + css + '</style>\n<div id="app"></div>\n' + pre + '\n<script type="module">' + js.replace('</script', '<\\/script') + '</script>\n'
 pathlib.Path('.standalone/artifact.html').write_text(art)
 PY

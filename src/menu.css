@@ -1,0 +1,101 @@
+/* ═══════════ Главное меню в стиле CS2 ═══════════
+   Тёмное стекло, плоские панели с острыми углами, узкий заголовочный шрифт,
+   оранжевый T и синий CT. Фон — ключевой арт (ui_menu_key.webp) или два бойца по краям. */
+.km {
+  --km-bg: #0b0d10; --km-panel: rgba(16, 19, 24, .72); --km-panel-hi: rgba(28, 33, 41, .85); --km-line: rgba(255, 255, 255, .09);
+  --km-fg: #eef1f4; --km-muted: #98a2ae; --km-t: #e8a33d; --km-ct: #5c9ce6; --km-go: #7ac943; --km-go-dk: #3f7a1f;
+  --km-head: 'Oswald', 'Russo One', 'Onest', sans-serif; --km-body: 'Onest', system-ui, sans-serif;
+  position: relative; isolation: isolate; height: 100%; overflow: hidden auto; color: var(--km-fg); font-family: var(--km-body);
+  display: flex; flex-direction: column; padding: 0 max(16px, env(safe-area-inset-left)) calc(16px + env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-right));
+  background: var(--km-bg);
+}
+.km::before { content: ''; position: absolute; inset: 0; z-index: -3; background: var(--menu-bg) center / cover; filter: grayscale(.35) brightness(.32) blur(2px); transform: scale(1.05); }
+.km::after { content: ''; position: absolute; inset: 0; z-index: -1; pointer-events: none;
+  background: radial-gradient(120% 60% at 50% 0%, transparent 30%, rgba(8,10,13,.6) 70%), linear-gradient(transparent 28%, rgba(9,11,14,.86) 52%, #0a0c0f 80%); }
+
+/* Ключевой арт */
+.km-art { position: absolute; inset: 0 0 auto; height: 58vh; max-height: 560px; z-index: -2; pointer-events: none; overflow: hidden; }
+.km-art img { position: absolute; bottom: 0; height: 100%; width: auto; max-width: none;
+  -webkit-mask: linear-gradient(#000 55%, transparent 98%); mask: linear-gradient(#000 55%, transparent 98%); filter: saturate(1.05) contrast(1.05); animation: kmIn .9s cubic-bezier(.2,.8,.2,1) both; }
+.km-art img.t { left: -18%; -webkit-mask: linear-gradient(90deg, #000 45%, transparent 92%), linear-gradient(#000 55%, transparent 98%); -webkit-mask-composite: source-in; mask: linear-gradient(90deg, #000 45%, transparent 92%) intersect, linear-gradient(#000 55%, transparent 98%); }
+.km-art img.ct { right: -18%; animation-delay: .12s; -webkit-mask: linear-gradient(270deg, #000 45%, transparent 92%), linear-gradient(#000 55%, transparent 98%); -webkit-mask-composite: source-in; mask: linear-gradient(270deg, #000 45%, transparent 92%) intersect, linear-gradient(#000 55%, transparent 98%); }
+.km-art.one { background: var(--key) center 20% / cover no-repeat; -webkit-mask: linear-gradient(#000 50%, transparent 100%); mask: linear-gradient(#000 50%, transparent 100%); animation: kmFade 1s ease both; }
+@keyframes kmIn { from { opacity: 0; transform: translateY(16px); } }
+@keyframes kmFade { from { opacity: 0; } }
+
+/* Верхняя полоса */
+.km-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: calc(12px + env(safe-area-inset-top)) 0 0; }
+.km-logo { display: grid; grid-template-columns: auto 1fr; column-gap: 8px; align-items: center; }
+.km-logo i { grid-row: 1 / 3; width: 5px; height: 30px; background: linear-gradient(var(--km-t) 50%, var(--km-ct) 50%); }
+.km-logo b { font: 700 22px/1 var(--km-head); letter-spacing: .14em; }
+.km-logo small { font: 500 9.5px/1.3 var(--km-body); letter-spacing: .16em; text-transform: uppercase; color: var(--km-muted); }
+.km-me { display: flex; align-items: center; gap: 8px; font-size: 11.5px; color: var(--km-muted); }
+.km-me b { color: var(--km-fg); font-weight: 600; font-variant-numeric: tabular-nums; }
+.km-me > span { padding: 6px 10px; background: var(--km-panel); border: 1px solid var(--km-line); border-radius: 3px; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); white-space: nowrap; }
+.km-icon { width: 34px; height: 34px; display: grid; place-items: center; padding: 0; border-radius: 3px; color: var(--km-fg);
+  background: var(--km-panel); border: 1px solid var(--km-line); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); transition: background .15s, border-color .15s; }
+.km-icon .ico { width: 18px; height: 18px; }
+.km-icon:hover, .km-icon.on { background: var(--km-panel-hi); border-color: rgba(255,255,255,.22); }
+
+.km-settings { position: absolute; z-index: 5; right: max(16px, env(safe-area-inset-right)); top: calc(56px + env(safe-area-inset-top)); width: min(300px, calc(100% - 32px));
+  display: grid; gap: 8px; padding: 12px; background: rgba(14,17,22,.94); border: 1px solid var(--km-line); border-radius: 4px; box-shadow: 0 14px 30px rgba(0,0,0,.6); }
+.km-settings .toggle { display: flex; align-items: center; gap: 10px; padding: 8px 4px; background: none; border: none; color: var(--km-fg); font: 500 13px var(--km-body); text-align: left; }
+.km-settings .note { color: var(--km-muted); font-size: 11px; }
+
+/* Основная колонка */
+.km-main { display: grid; gap: 10px; margin-top: auto; padding-top: 30vh; width: 100%; max-width: 460px; margin-inline: auto; }
+.km-hero { display: grid; gap: 6px; margin-bottom: 4px; }
+.km-eyebrow { margin: 0; font: 600 11px var(--km-body); letter-spacing: .2em; text-transform: uppercase; color: var(--km-muted); }
+.km-eyebrow .t { color: var(--km-t); } .km-eyebrow .ct { color: var(--km-ct); }
+.km h1 { margin: 0; font: 700 clamp(30px, 8.5vw, 44px)/1.02 var(--km-head); text-transform: uppercase; letter-spacing: .01em; text-wrap: balance; text-shadow: 0 2px 18px rgba(0,0,0,.6); }
+.km-lede { margin: 0; max-width: 40ch; font-size: 13px; line-height: 1.45; color: #c2c9d2; }
+
+/* Кнопка «Играть» — как зелёная кнопка поиска матча в CS2 */
+.km-play { position: relative; display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 12px; padding: 14px 18px; border: none; border-radius: 3px; text-align: left; overflow: hidden;
+  background: linear-gradient(180deg, #8bd655, var(--km-go) 45%, #5aa632); color: #0b1a05; box-shadow: 0 0 0 1px rgba(0,0,0,.4), 0 8px 24px rgba(122,201,67,.25); transition: filter .15s, transform .15s; }
+.km-play::after { content: ''; position: absolute; inset: 0; background: linear-gradient(100deg, transparent 30%, rgba(255,255,255,.35) 50%, transparent 70%); transform: translateX(-120%); animation: kmShine 4s ease-in-out 1.2s infinite; }
+.km-play span { width: 34px; height: 34px; display: grid; place-items: center; border-radius: 2px; background: rgba(11,26,5,.16); }
+.km-play .ico { width: 18px; height: 18px; }
+.km-play b { font: 700 24px/1 var(--km-head); letter-spacing: .1em; text-transform: uppercase; }
+.km-play small { font: 600 11px var(--km-body); letter-spacing: .08em; text-transform: uppercase; opacity: .75; }
+.km-play:hover { filter: brightness(1.07); } .km-play:active { transform: translateY(1px); }
+@keyframes kmShine { 0%, 70% { transform: translateX(-120%); } 100% { transform: translateX(120%); } }
+
+/* Режимы */
+.km-modes { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.km-mode { position: relative; min-height: 92px; padding: 0; border-radius: 3px; overflow: hidden; text-align: left; color: var(--km-fg);
+  background: var(--km-panel); border: 1px solid var(--km-line); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); transition: border-color .15s, background .15s; }
+.km-mode::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--c); }
+.km-mode.t { --c: var(--km-t); } .km-mode.ct { --c: var(--km-ct); }
+.km-mode img { position: absolute; right: -14px; bottom: -6px; height: 118%; width: auto; max-width: none; opacity: .9;
+  -webkit-mask: linear-gradient(90deg, transparent, #000 45%); mask: linear-gradient(90deg, transparent, #000 45%); transition: transform .3s ease; }
+.km-mode span { position: relative; display: grid; gap: 3px; padding: 16px 12px 12px 14px; max-width: 64%; }
+.km-mode b { font: 600 17px/1.05 var(--km-head); letter-spacing: .06em; text-transform: uppercase; }
+.km-mode small { font-size: 11px; line-height: 1.3; color: var(--km-muted); }
+.km-mode:hover { border-color: color-mix(in srgb, var(--c) 60%, transparent); background: var(--km-panel-hi); }
+.km-mode:hover img { transform: scale(1.04); }
+.km-mode.hot::after { content: 'NEW'; position: absolute; left: 14px; top: -1px; border-radius: 0 0 2px 2px; font: 700 9px/1 var(--km-body); letter-spacing: .1em; padding: 3px 5px; border-radius: 2px; background: var(--km-t); color: #1d1103; }
+
+/* Задания дня */
+.km-quests { display: grid; gap: 7px; padding: 11px 14px 12px; border-radius: 3px; text-align: left; color: var(--km-fg);
+  background: var(--km-panel); border: 1px solid var(--km-line); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); transition: border-color .15s; }
+.km-quests:hover { border-color: rgba(255,255,255,.2); }
+.km-qhead { display: flex; justify-content: space-between; align-items: baseline; }
+.km-qhead b { font: 600 13px var(--km-head); letter-spacing: .1em; text-transform: uppercase; }
+.km-qhead small { font-size: 11px; color: var(--km-muted); font-variant-numeric: tabular-nums; }
+.km-q { display: grid; gap: 4px; }
+.km-q em { font-style: normal; font-size: 12px; color: #cfd5dc; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.km-q i { height: 3px; border-radius: 2px; background: linear-gradient(90deg, var(--km-go) calc(var(--p) * 100%), rgba(255,255,255,.1) 0); }
+.km-q.done em { color: var(--km-go); } .km-q.done em::before { content: '✓ '; }
+
+/* Нижнее меню */
+.km-nav { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.km-nav button { display: grid; justify-items: center; gap: 6px; padding: 11px 6px; border-radius: 3px; color: var(--km-muted);
+  background: var(--km-panel); border: 1px solid var(--km-line); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); transition: color .15s, border-color .15s; }
+.km-nav .ico { width: 20px; height: 20px; }
+.km-nav b { font: 500 11.5px var(--km-body); color: var(--km-fg); }
+.km-nav button:hover { color: var(--km-fg); border-color: rgba(255,255,255,.2); }
+.km button:focus-visible { outline: 2px solid var(--km-ct); outline-offset: 2px; }
+
+@media (max-height: 700px) and (max-width: 899px) { .km-main { padding-top: 22vh; } .km-lede { display: none; } }
+@media (prefers-reduced-motion: reduce) { .km-art img, .km-art.one, .km-play::after { animation: none; } }
