@@ -425,3 +425,15 @@ h4.sub, .sub { font: 600 11px var(--font-body) !important; letter-spacing: .18em
 .eco-opt small { font-size: 11px; opacity: .6; text-align: center; }
 .eco-opt[disabled] { opacity: .4; cursor: default; }
 @media (prefers-reduced-motion: reduce) { .hs-end.eco { animation: none; } }
+
+/* Шапка боя: название карты — сбоку, рядом с «Меню»; центр свободен, туда поднят герой соперника */
+.hs-top { grid-template-columns: auto auto 1fr auto !important; position: relative; z-index: 3; pointer-events: none; }
+.hs-top > * { pointer-events: auto; }
+.hs-top .hs-title { grid-column: 2; justify-self: start; text-align: left; padding: 4px 6px; }
+.hs-top .score { grid-column: 4; }
+.hs-hero.p1 .hs-herowrap { margin-top: -34px; position: relative; z-index: 4; }
+@media (max-width: 440px) {
+  /* на узком экране подпись соперника мешала бы названию карты: имя и стиль видны по нажатию на героя */
+  .hs-hero.p1 .hh-name { display: none; }
+  .hs-hero.p1 .hs-herowrap { margin-top: -30px; }
+}

@@ -1162,7 +1162,7 @@ function boardHTML() {
     ${boardScene(S.map)}
     <header class="hs-top">
       ${S.on ? `<button class="ghost sm ${S.on.confirmResign ? 'danger' : ''}" data-act="hs-resign">${S.on.confirmResign ? 'Точно сдаться?' : 'Сдаться'}</button>` : '<button class="ghost sm" data-act="hs-menu">← Меню</button>'}
-      <button class="hs-title" data-act="hs-mapinfo">${S.on ? (S.on.ranked ? 'Рейтинг' : 'Дуэль') : 'Матч'} · ${esc(mp.name)} ⓘ</button>
+      <button class="hs-title" data-act="hs-mapinfo" title="Особенность карты">${esc(mp.name)}</button>
       ${S.on ? `<span class="score on"><b>${esc(S.on.opp.name)}</b>${S.on.oppOnline ? '' : ` <i class="hs-off">не в сети <span class="hs-timer" data-dl="${S.on.graceUntil ?? 0}"></span></i>`}</span>`
         : `<span class="score"><b>Вы ${S.score[0]}</b><i>:</i><b>${S.score[1]} Бот</b></span>`}
     </header>
