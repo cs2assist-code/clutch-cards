@@ -11,7 +11,7 @@ import { SIL } from './art-index';
 import { BEATS, botKnifeMove, KNIFE_HP, MOVE_RU, MOVES, newKnife, resolveKnife, type KnifeRound, type KnifeState, type Move } from './knife';
 import { CLASS_RU, HCARDS, hcard, hImg, unitArt, KW_RU, MAP_RULES, matchup, POWERS, sigCards, STYLE_BEATS, STYLE_RU, styleOf, type HCard, type KW, type Style } from './cards';
 import {
-  attackTargets, attackBonus, canAttack, canSave, canShop, costOf, isClutch, isCovered, shopPrice, isBehind, lossBonus, maxHp, endTurn, findUnit, heroId, HS, incomeOf, KILL_REWARD, mulligan, newGame, playTargets, powerTargets, startGame,
+  attackTargets, attackBonus, canAttack, canSave, canShop, costOf, isClutch, isCovered, shopPrice, isBehind, lossBonus, maxHp, endTurn, findUnit, heroId, HS, incomeOf, KILL_REWARD, bombGuarded, mulligan, newGame, playTargets, powerTargets, startGame,
   type Diff, type Ev, type HState, type HUnit, type PI,
 } from './engine';
 import { apply, botMulligan, botStep, legalActions, type Action } from './ai';
@@ -981,7 +981,7 @@ function unitHTML(u: HUnit, p: PI, tg: Set<string>) {
   return `<button class="${cls}" data-act="hs-ent" data-hid="${u.uid}"${blink}>
     <span class="hu-art${art ? ' full' : ''}"><img src="${esc(art ?? hImg(c))}" alt="">${u.blind ? '<i class="st-blind"><b></b><b></b><b></b></i>' : ''}${u.burn ? '<i class="st-fire"><b></b><b></b><b></b><b></b></i>' : ''}</span>
     ${c.kind === 'unit' && CLASS_SIL[c.cls] ? `<span class="hu-cls" title="${esc(clsRu(c.cls))}">${typeIcon(c)}</span>` : ''}
-    ${kwChips(u)}${u.armor ? `<b class="hu-arm" title="Броня ${u.armor}"><i>${u.armor}</i></b>` : ''}${u.kw.includes('vet') ? '<b class="hu-vet" title="Ветеран"><i>★</i></b>' : ''}${bonus ? `<em class="hu-bonus">+${bonus}</em>` : ''}${u.marked ? '<em class="hu-tag trade">трейд +2</em>' : clutch ? '<em class="hu-tag clutch">клатч</em>' : ''}${covered ? '<i class="hu-cov" title="За укрытием: снайперы не достанут"></i>' : ''}
+    ${kwChips(u)}${u.armor ? `<b class="hu-arm" title="Броня ${u.armor}"><i>${u.armor}</i></b>` : ''}${u.kw.includes('vet') ? '<b class="hu-vet" title="Ветеран"><i>★</i></b>' : ''}${bonus ? `<em class="hu-bonus">+${bonus}</em>` : ''}${c.kind === 'bomb' && bombGuarded(s.p[p].board, u) ? '<em class="hu-tag guard">под охраной</em>' : ''}${u.marked ? '<em class="hu-tag trade">трейд +2</em>' : clutch ? '<em class="hu-tag clutch">клатч</em>' : ''}${covered ? '<i class="hu-cov" title="За укрытием: снайперы не достанут"></i>' : ''}
     ${c.kind === 'bomb' ? `<b class="hu-timer">${u.bomb}</b>` : `<b class="hu-atk ${u.atk > (c.atk ?? 0) ? 'up' : ''}"><i>${u.atk}</i></b>`}
     <b class="hu-hp ${u.hp < u.maxHp ? 'dmg' : u.maxHp > base ? 'up' : ''}"><i>${u.hp}</i></b>
   </button>`;
@@ -1241,8 +1241,8 @@ function rulesHTML() {
   return `<main class="rm scroll hsrules">
     <header class="rm-head"><button class="ghost sm" data-act="hs-menu">← Меню</button><span class="rm-title">Как играть</span><span></span></header>
     <h4 class="sub">Цель</h4>
-    <p>Снять герою соперника ${HS.heroHp} HP. T могут победить и бомбой: если CT не уничтожат C4 за ${HS.bombTimer} хода, она взрывается. Матч — до ${HS.winTo} побед, стороны меняются.</p>
-    <p><b>Бомба как в CS.</b> C4 у T всегда в стартовой руке. Закладка — ${money(HS.plantBonus)} в следующем ходу. Бомбу бьют в обход укрытий, но сильнейший боец T рядом с ней отвечает сапёру половиной своей атаки («Оборона» разминирует под прикрытием — в неё не стреляют). Обезвредили — CT получают ${money(HS.defuseBonus)}.</p>
+    <p>Снять герою соперника ${HS.heroHp} HP — или выиграть бомбой. T закладывают C4 (с ${HS.plantTurn}-го своего хода): не обезвредят за ${HS.bombTimer} хода — победа T, обезвредят — победа CT. Перед партией — ножевой раунд за выбор стороны.</p>
+    <p><b>Бомба как в CS.</b> C4 у T всегда в стартовой руке. Закладка — ${money(HS.plantBonus)} в следующем ходу. У бомбы ${HS.bombHp} здоровья. Пока с обеих сторон от неё стоят бойцы T (не ослеплённые), её нельзя бить — сначала зачистите точку. Бомбу бьют в обход укрытий, сильнейший боец T рядом отвечает сапёру половиной атаки («Оборона» разминирует под прикрытием). Обезвредили — CT сразу побеждают.</p>
     <h4 class="sub">Ход</h4>
     <ul class="hs-ul">
       <li>Деньги — это мана: ${money(HS.firstIncome)} в первый ход и на ${money(HS.income)} больше каждый следующий (до ${money(HS.maxMoney)}). До ${money(HS.carry)} неистраченных переходят дальше.</li>
@@ -1560,7 +1560,7 @@ async function finishOnline(m: Extract<S2C, { t: 'over' }>) {
   S.phase = 'over'; S.busy = false; S.sel = null;
 }
 const REASON_RU: Record<string, (win: boolean) => string> = {
-  bomb: () => 'Бомба взорвалась', hero: (w) => (w ? 'Герой соперника повержен' : 'Ваш герой повержен'),
+  bomb: () => 'Бомба взорвалась', defuse: () => 'Бомба обезврежена', hero: (w) => (w ? 'Герой соперника повержен' : 'Ваш герой повержен'),
   resign: (w) => (w ? 'Соперник сдался' : 'Вы сдались'), leave: (w) => (w ? 'Соперник не вернулся' : 'Вы не вернулись вовремя'),
 };
 
@@ -1875,11 +1875,7 @@ const TUT_STEPS: TutStep[] = [
     target: () => '#cash0', done: () => false },
   { id: 'lossbonus', info: true, text: () => `Бонус за отставание, как в CS: если у вашего героя на ${HS.lossGap}+ здоровья меньше, чем у соперника, каждый такой ход подряд даёт +${money(HS.lossStep)} (до +${money(HS.lossStep * HS.lossMax)}). Закладка бомбы — T +${money(HS.plantBonus)} (Phoenix ${money(1300)}), обезвреживание — CT +${money(HS.defuseBonus)}.`,
     target: () => '#cash0', done: () => false },
-  { id: 'bomb', text: () => (playStage() === 'place' ? 'Выберите место: поставьте бомбу рядом со своим бойцом — он будет стрелять в сапёров.' : 'Хватает денег на бомбу! Заложите C4: если CT не уничтожат её за 3 хода — победа T.'),
-    target: () => playFlow('c4'), allow: () => playAllow('c4'), done: () => me0().board.some((u) => u.card === 'c4'), need: () => !!handUid('c4') && !!playTargets(S.s!, 0, 'c4') },
-  { id: 'bombinfo', info: true, text: () => `Число на бомбе — сколько ходов до взрыва. CT бьют её в обход укрытий, но сильнейший T рядом отвечает сапёру половиной атаки. Обезвредили — CT получают ${money(HS.defuseBonus)}, а бомба у T больше не появится.`,
-    target: () => { const b = me0().board.find((u) => u.card === 'c4'); return b ? `[data-hid="${b.uid}"]` : null; }, done: () => false },
-  { id: 'end2', text: 'Заканчивайте ход.', target: () => '.hs-end', done: () => S.s!.turn !== 0 },
+  { id: 'end2', text: 'Бомбу можно заложить только с вашего третьего хода — её ещё надо донести до точки. Заканчивайте ход.', target: () => '.hs-end', done: () => S.s!.turn !== 0 },
   // ── Ход 3: гранаты, снаряжение, бай-меню, сила героя ──
   { id: 'nades', info: true, text: 'Гранаты: HE — 3 урона всем бойцам врага; молотов и зажигательная — 4 урона и горение; флешка — боец и соседи пропустят атаку и не ответят; дым — снайперы и пулемёты врага пропустят атаку; Zeus — 4 урона сквозь броню, бьёт и бомбу.',
     target: () => handSel(handUid('flash') ?? handUid('he')), done: () => false },
@@ -1892,6 +1888,10 @@ const TUT_STEPS: TutStep[] = [
   { id: 'hero', text: () => (S.sel?.k === 'atk' ? 'Выберите цель для удара героем.' : 'Теперь ударьте ножом: нажмите своего героя, затем цель.'),
     target: () => (S.sel?.k === 'atk' ? '.tgt' : '[data-hid="h0"]'), allow: () => ['.tgt', '[data-hid="h0"]'],
     done: () => me0().hero.attacked, need: () => canAttack(S.s!, 0, 'h0') && attackTargets(S.s!, 0, 'h0').length > 0 },
+  { id: 'bomb', text: () => (playStage() === 'place' ? 'Выберите место: поставьте бомбу между двумя своими бойцами — пока они рядом, CT не могут её обезвредить.' : `Третий ход — можно закладывать! Заложите C4: если CT не обезвредят её за ${HS.bombTimer} хода — победа T, обезвредят — победа CT.`),
+    target: () => playFlow('c4'), allow: () => playAllow('c4'), done: () => me0().board.some((u) => u.card === 'c4'), need: () => !!handUid('c4') && !!playTargets(S.s!, 0, 'c4') },
+  { id: 'bombinfo', info: true, text: () => `Число на бомбе — сколько ходов до взрыва, у бомбы ${HS.bombHp} здоровья. Пока с обеих сторон от неё стоят ваши бойцы (не ослеплённые), CT не могут её бить: им сначала надо зачистить точку. Обезвредили — CT сразу выигрывают партию.`,
+    target: () => { const b = me0().board.find((u) => u.card === 'c4'); return b ? `[data-hid="${b.uid}"]` : null; }, done: () => false },
   // ── Особые карты и правила боя ──
   { id: 'traps', info: true, text: () => `Засады лежат рубашкой вверх (до ${HS.traps}) и срабатывают сами: «Держит угол» — 3 урона атакующему, «Растяжка» — 2 урона выставленному бойцу, «Фейк» — гасит гранату врага, «Тиммейт на подхвате» — замена погибшему, «Ниндзя-дефьюз» у CT — тихо снимает бомбу.`,
     target: () => null, done: () => false },

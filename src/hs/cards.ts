@@ -46,7 +46,7 @@ export const KW_RU: Record<KW, [string, string]> = {
   cleave: ['Дробь', 'Задевает и соседей цели.'],
   suppress: ['Подавление', 'Раненая цель ослеплена: пропустит атаку и не ответит на выстрел.'],
   pierce: ['Бронебойный', 'Игнорирует броню.'],
-  sapper: ['Сапёр', 'Двойной урон по бомбе, атакует её сразу после выхода.'],
+  sapper: ['Сапёр', '+2 урона по бомбе, атакует её сразу после выхода.'],
   deathblast: ['Взрывчатка', 'При гибели — 2 урона всем вражеским бойцам.'],
   vet: ['Ветеран', 'Уже получил бонус ветерана.'],
 };
@@ -137,10 +137,10 @@ export const HCARDS: HCard[] = [
   sp('helmet', 'N', 2000, 'friendlyUnit', 'Бойцу +1 брони, +1 здоровья и Шлем.'),
   sp('medkit', 'N', 1000, 'friendlyAny', 'Восстановить 4 здоровья своему бойцу или герою.'),
   sp('boost', 'N', 1000, 'friendlyUnit', 'Бойцу +2 атаки.'),
-  sp('kit', 'CT', 1000, 'none', 'Возьмите карту. Если заложена бомба — 4 урона по ней.'),
+  sp('kit', 'CT', 1000, 'none', 'Возьмите карту. Если бомбу не охраняют — 3 урона по ней.'),
   sp('drop', 'N', 0, 'none', '+$1000 в этом ходу.'),
-  { id: 'c4', name: 'Бомба C4', kind: 'bomb', side: 'T', cost: 3000, hp: 5, cls: 'bomb', img: 'fakeplant',
-    text: 'Заложить бомбу (0/5): +$600 в следующем ходу. Не уничтожат за 3 хода — победа. Бомбу бьют в обход укрытий, но сильнейший ваш боец рядом с ней отвечает сапёру половиной атаки. Обезвредившим CT — +$2000.' },
+  { id: 'c4', name: 'Бомба C4', kind: 'bomb', side: 'T', cost: 3000, hp: 9, cls: 'bomb', img: 'fakeplant',
+    text: 'Закладка с 3-го хода, +$600 в следующем ходу. Бомба 0/9: не обезвредят за 4 хода — победа T, обезвредят — победа CT. Пока с обеих сторон от бомбы стоят ваши бойцы, её нельзя бить.' },
   // Засады: лежат рубашкой вверх и срабатывают сами
   trap('angle', 'Держит угол', 'N', 2000, 'Засада. Когда вражеский боец атакует, он сначала получает 3 урона.', 'wallbang'),
   trap('wire', 'Растяжка', 'T', 1000, 'Засада. Когда враг выставляет бойца, тот получает 2 урона.', 'decoy'),
@@ -149,23 +149,23 @@ export const HCARDS: HCard[] = [
   trap('backup', 'Тиммейт на подхвате', 'N', 2000, 'Засада. Когда ваш боец погибает, на его место выходит Тиммейт 2/5.', 'drop'),
 
   // ─── Фирменные карты агентов ───
-  u('sw_shield', 'CT', 3000, 2, 8, 'rifle', ['taunt'], { name: 'Щитовик SWAT', armor: 1, img: 'agent_ct_swat', sig: 'ct_swat' }),
-  sp('sw_armor', 'CT', 2000, 'none', 'Всем своим бойцам +1 брони и +1 здоровья.', { name: 'Склад брони', img: 'kevlar', sig: 'ct_swat' }),
+  u('sw_shield', 'CT', 2500, 2, 8, 'rifle', ['taunt'], { name: 'Щитовик SWAT', armor: 1, img: 'agent_ct_swat', sig: 'ct_swat' }),
+  sp('sw_armor', 'CT', 1500, 'none', 'Всем своим бойцам +1 брони и +1 здоровья.', { name: 'Склад брони', img: 'kevlar', sig: 'ct_swat' }),
   u('se_spotter', 'CT', 1500, 2, 4, 'pistol', [], { name: 'Корректировщик', img: 'agent_ct_seal', sig: 'ct_seal', target: 'friendlySniper', bcOptional: true,
     text: 'При выходе: своему снайперу +2 атаки и сразу закончить перезарядку.' }),
   sp('se_long', 'CT', 2000, 'enemyUnit', '5 урона бойцу. Снайперу или пулемёту — 8.', { name: 'Дальний выстрел', img: 'scar20', sig: 'ct_seal' }),
   sp('fb_intel', 'CT', 1000, 'none', 'Уничтожить все засады врага и взять 2 карты.', { name: 'Разведданные', img: 'kit', sig: 'ct_fbi' }),
-  u('fb_sapper', 'CT', 2500, 3, 5, 'smg', ['sapper'], { name: 'Сапёр FBI', img: 'agent_ct_fbi', sig: 'ct_fbi' }),
-  sp('sa_breach', 'CT', 4500, 'none', 'Ослепить всех вражеских бойцов.', { name: 'Штурм-группа', img: 'flash', sig: 'ct_sas' }),
-  u('sa_oper', 'CT', 4000, 3, 4, 'rifle', ['rush'], { name: 'Оператор SAS', img: 'agent_ct_sas', sig: 'ct_sas', target: 'enemyUnit', bcOptional: true,
+  u('fb_sapper', 'CT', 3000, 3, 5, 'smg', ['sapper'], { name: 'Сапёр FBI', img: 'agent_ct_fbi', sig: 'ct_fbi' }),
+  sp('sa_breach', 'CT', 3500, 'none', 'Ослепить всех вражеских бойцов.', { name: 'Штурм-группа', img: 'flash', sig: 'ct_sas' }),
+  u('sa_oper', 'CT', 3500, 3, 4, 'rifle', ['rush'], { name: 'Оператор SAS', img: 'agent_ct_sas', sig: 'ct_sas', target: 'enemyUnit', bcOptional: true,
     text: 'При выходе: ослепить вражеского бойца.' }),
   sp('gi_shield', 'CT', 1500, 'friendlyUnit', 'Бойцу +3 здоровья, +1 брони и Укрытие.', { name: 'Баллистический щит', img: 'shield', sig: 'ct_gign' }),
   u('gi_gend', 'CT', 3000, 3, 5, 'smg', ['taunt'], { name: 'Жандарм GIGN', img: 'agent_ct_gign', sig: 'ct_gign', text: 'При выходе: соседям +1 атаки и +1 здоровья.' }),
   u('ph_bomber', 'T', 2500, 3, 2, 'pistol', ['rush', 'deathblast'], { name: 'Подрывник', img: 'agent_t_phoenix', sig: 't_phoenix' }),
-  sp('ph_fast', 'T', 1000, 'none', 'Если бомба заложена — до взрыва на 1 ход меньше (не меньше 1). Иначе — возьмите карту.', { name: 'Быстрая закладка', img: 'fakeplant', sig: 't_phoenix' }),
+  sp('ph_fast', 'T', 1500, 'none', 'Если бомба заложена — до взрыва на 1 ход меньше (не меньше 2). Иначе — возьмите карту.', { name: 'Быстрая закладка', img: 'fakeplant', sig: 't_phoenix' }),
   sp('el_rush', 'T', 1000, 'none', 'Своим бойцам +1 атаки в этом ходу; вышедшие в этом ходу получают Рывок.', { name: 'Раш', img: 'rushb', sig: 't_elite' }),
   u('el_storm', 'T', 4500, 5, 6, 'rifle', ['rush', 'vet', 'helmet'], { name: 'Штурмовик Elite', img: 'agent_t_elite', sig: 't_elite', text: 'Уже ветеран.' }),
-  sp('ba_wall', 'T', 2500, 'none', 'Поджечь всех вражеских бойцов: 1 урон сейчас и 1 в начале их хода. Укрытиям — ещё 3.', { name: 'Огненная стена', img: 'molotov', sig: 't_balkan' }),
+  sp('ba_wall', 'T', 2000, 'none', 'Поджечь всех вражеских бойцов: 1 урон сейчас и 1 в начале их хода. Укрытиям — ещё 3.', { name: 'Огненная стена', img: 'molotov', sig: 't_balkan' }),
   u('ba_gunner', 'T', 5500, 4, 9, 'heavy', ['suppress', 'taunt'], { name: 'Пулемётчик Balkan', img: 'agent_t_balkan', sig: 't_balkan' }),
   u('gu_ambush', 'T', 3000, 3, 3, 'smg', ['stealth', 'rush'], { name: 'Засадник', img: 'agent_t_guerrilla', sig: 't_guerrilla' }),
   trap('gu_mines', 'Минное поле', 'T', 2500, 'Засада. Когда враг выставляет бойца, тот получает 3 урона.', 'he', { sig: 't_guerrilla' }),
@@ -214,14 +214,14 @@ export const MAP_RULES: Record<string, string> = {
 export interface Power { name: string; text: string; target: HTarget; cost: number }
 export const POWER_COST = 2000;
 export const POWERS: Record<string, Power> = {
-  ct_swat: { name: 'Бронежилет', text: '+4 брони герою и +1 брони всем своим бойцам.', target: 'none', cost: 1500 },
-  ct_seal: { name: 'Точный выстрел', text: '2 урона любому персонажу.', target: 'any', cost: POWER_COST },
-  ct_fbi: { name: 'Сапёрный набор', text: '1 урон бойцу сквозь броню, бомбе — 4.', target: 'anyUnit', cost: 1000 },
-  ct_sas: { name: 'Светошумовая', text: 'Ослепить вражеского бойца: пропустит атаку и не ответит на выстрел.', target: 'enemyUnit', cost: 3000 },
+  ct_swat: { name: 'Бронежилет', text: '+3 брони герою, всем своим бойцам +1 брони и +1 здоровья.', target: 'none', cost: 1000 },
+  ct_seal: { name: 'Точный выстрел', text: '2 урона любому персонажу, неохраняемой бомбе — 3.', target: 'any', cost: POWER_COST },
+  ct_fbi: { name: 'Сапёрный набор', text: '1 урон бойцу сквозь броню, бомбе — 2.', target: 'anyUnit', cost: 2000 },
+  ct_sas: { name: 'Светошумовая', text: 'Ослепить вражеского бойца: пропустит атаку и не ответит на выстрел.', target: 'enemyUnit', cost: 1500 },
   ct_gign: { name: 'Щит', text: 'Своему бойцу +1 атаки и +2 здоровья.', target: 'friendlyUnit', cost: POWER_COST },
   t_phoenix: { name: 'Нож', text: 'Герой получает +3 атаки на этот ход.', target: 'none', cost: POWER_COST },
   t_elite: { name: 'Боевой клич', text: 'Своему бойцу +1 атаки и +1 здоровья; если он вышел в этом ходу — ещё и Рывок.', target: 'friendlyUnit', cost: POWER_COST },
-  t_balkan: { name: 'Поджог', text: '2 урона вражескому герою.', target: 'none', cost: POWER_COST },
+  t_balkan: { name: 'Поджог', text: '2 урона вражескому бойцу или герою.', target: 'enemyAny', cost: POWER_COST },
   t_guerrilla: { name: 'Засада', text: 'Своему бойцу Глушитель (невидим, пока не атакует).', target: 'friendlyUnit', cost: 2000 },
   t_pro: { name: 'Заказ', text: '3 урона вражескому бойцу сквозь броню.', target: 'enemyUnit', cost: POWER_COST },
 };
@@ -238,7 +238,7 @@ export const STYLE: Record<string, Style> = {
 export const STYLE_BEATS: Record<Style, Style> = { rush: 'long', hold: 'rush', long: 'hold' };
 export const STYLE_RU: Record<Style, { name: string; icon: string; passive: string; plan: string }> = {
   rush: { name: 'Раш', icon: '»', passive: 'Бойцы с Рывком +1 атаки и +1 здоровья; энтри-фраг даёт $600 вместо $300 и +1 атаки бойцу.', plan: 'давит с первых ходов дешёвыми бойцами с рывком' },
-  hold: { name: 'Оборона', icon: '▣', passive: 'Герой 48 HP; вражеский Рывок не срабатывает; бойцы с Укрытием +1 здоровья и +1 брони; гранаты и огонь +1 урона; охрана бомбы не стреляет в её сапёров.', plan: 'держит линию укрытиями, лечением и уроном по площади' },
+  hold: { name: 'Оборона', icon: '▣', passive: 'Герой 58 HP; вражеский Рывок не срабатывает; бойцы с Укрытием +1 здоровья и +1 брони; гранаты и огонь +1 урона; охрана бомбы не стреляет в её сапёров.', plan: 'держит линию укрытиями, лечением и уроном по площади' },
   long: { name: 'Дальняя игра', icon: '⌖', passive: 'Добор 1 из 3 карт вместо 1 из 2; снайперы +1 атаки; все бойцы бьют сквозь броню и +1 урона по бойцам с Укрытием.', plan: 'берёт картами и снайперами в долгой партии' },
 };
 export const styleOf = (agentId: string): Style => STYLE[agentId] ?? 'hold';

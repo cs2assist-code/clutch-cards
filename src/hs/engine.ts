@@ -6,8 +6,8 @@ import type { Side } from '../game/types';
 import { agentDeck, COUNTER, shopPool, styleOf, hcard, PIERCE_CLS, POWERS, type HClass, type HTarget, type KW } from './cards';
 
 export const HS = {
-  heroHp: 40,
-  holdHp: 48,            // герой «Обороны»
+  heroHp: 50,
+  holdHp: 58,            // герой «Обороны»
   ctArmor: 5,            // CT держат точку: герой начинает с бронёй
   board: 6,
   hand: 7,
@@ -23,7 +23,12 @@ export const HS = {
   lossMax: 4,            // …но не больше 4 шагов ($2000)
   lossGap: 5,            // «позади» — если здоровье вашего героя меньше, чем у соперника, на столько или больше (броня не в счёт)
   carry: 3000,           // неистраченные деньги переходят в следующий ход, но не больше
-  bombTimer: 3,          // ходов T до взрыва
+  bombTimer: 4,          // ходов T до взрыва
+  bombHp: 9,             // здоровье бомбы
+  plantTurn: 3,          // закладывать можно с этого своего хода (бомбу ещё надо донести до точки)
+  defuseWins: true,      // уничтожили бомбу — CT сразу побеждают
+  bombGuarded: true,     // бомбу нельзя бить, пока её охраняют бойцы T (сначала «зачистить точку»)
+  bombGuardMin: 2,       // …сколько бойцов рядом нужно для охраны (1 — любой сосед, 2 — с обеих сторон)
   plantBonus: 600,       // T за закладку: +$600 в следующем ходу (как plant bonus в CS)
   guardShot: true,       // «Охрана»: соседние с бомбой T стреляют в того, кто её бьёт
   guardMul: 0.5,         // …с такой долей своей атаки (округление вверх)
@@ -34,7 +39,7 @@ export const HS = {
   holdBombDelay: 0,      // против «Обороны» бомба тикает на столько ходов дольше
   holdNoGuard: true,     // «Оборона» разминирует под прикрытием: охрана бомбы в неё не стреляет
   c4Cost: 3000,
-  kitDmg: 4,
+  kitDmg: 3,
   maxArmor: 2,
   winTo: 2,
   holdBlocksRush: true,  // против «Обороны» Рывок не срабатывает
@@ -139,6 +144,9 @@ const newId = (s: HState, pre = 'u') => `${pre}${++s.seq}`;
 export const heroId = (p: PI) => `h${p}`;
 /** Максимум здоровья героя: у «Обороны» больше. */
 /** Поправки здоровья героя по агенту (баланс). */
+/** Поправка здоровья бомбы по агенту: Balkan минирует подходы. */
+export const AGENT_BOMB_HP: Record<string, number> = { t_balkan: 1 };
+export const bombHpOf = (agentId: string) => HS.bombHp + (AGENT_BOMB_HP[agentId] ?? 0);
 export const AGENT_HP: Record<string, number> = { ct_swat: 3, ct_seal: 3, t_pro: 2 };
 export const maxHp = (agentId: string) => (styleOf(agentId) === 'hold' ? HS.holdHp : HS.heroHp) + (AGENT_HP[agentId] ?? 0);
 export const foe = (p: PI): PI => (p === 0 ? 1 : 0);
@@ -319,6 +327,13 @@ export function findUnit(s: HState, id: string): { u: HUnit; p: PI } | null {
 }
 const withNeighbors = (board: HUnit[], u: HUnit) => { const i = board.indexOf(u); return [board[i - 1], u, board[i + 1]].filter(Boolean) as HUnit[]; };
 export const isBomb = (u: HUnit) => u.card === 'c4';
+/** Бомба под охраной: рядом стоит живой боец T — её ещё нельзя разминировать. */
+export function bombGuarded(board: HUnit[], b: HUnit): boolean {
+  if (!HS.bombGuarded) return false;
+  const i = board.indexOf(b);
+  return [board[i - 1], board[i + 1]].filter((x) => x && !isBomb(x) && x.hp > 0 && !x.blind).length >= HS.bombGuardMin;   // ослеплённый не охраняет
+}
+const openBombs = (board: HUnit[]) => board.filter((x) => isBomb(x) && !bombGuarded(board, x));
 export const clsOf = (u: HUnit): HClass => hcard(u.card).cls;
 
 /** Кого можно выбрать целью карты/силы героя. */
@@ -333,9 +348,9 @@ export function targetsFor(s: HState, p: PI, kind: HTarget): string[] {
     case 'friendlyUnit': return myUnits;
     case 'friendlySniper': return me.board.filter((u) => u.kw.includes('sniper')).map((u) => u.uid);
     case 'friendlyAny': return [...myUnits, heroId(p)];
-    case 'anyUnit': return [...enemyUnits, ...en.board.filter(isBomb).map((u) => u.uid), ...myUnits];
+    case 'anyUnit': return [...enemyUnits, ...openBombs(en.board).map((u) => u.uid), ...myUnits];
     case 'enemyAny': return [...enemyUnits, heroId(foe(p))];
-    case 'any': return [...enemyUnits, heroId(foe(p)), ...myUnits, heroId(p)];
+    case 'any': return [...enemyUnits, ...openBombs(en.board).map((u) => u.uid), heroId(foe(p)), ...myUnits, heroId(p)];
   }
 }
 
@@ -354,7 +369,7 @@ export function playTargets(s: HState, p: PI, id: string, free = false): string[
   if (s.turn !== p || s.winner !== null || P.choice || (!free && P.money < costOf(s, id))) return null;
   if ((c.kind === 'unit' || c.kind === 'bomb') && P.board.length >= HS.board) return null;
   if (c.kind === 'trap' && (P.traps.length >= HS.traps || P.traps.some((t) => t.id === c.id))) return null;
-  if (c.kind === 'bomb' && (P.hero.side !== 'T' || P.board.some(isBomb))) return null;
+  if (c.kind === 'bomb' && (P.hero.side !== 'T' || P.board.some(isBomb) || P.turns < HS.plantTurn)) return null;
   if ((c.id === 'he' || c.id === 'ba_wall' || c.id === 'sa_breach') && !s.p[foe(p)].board.some((u) => !isBomb(u))) return null;
   if (c.id === 'smoke' && !s.p[foe(p)].board.some((u) => u.kw.includes('sniper') || clsOf(u) === 'heavy')) return null;
   if (!c.target || c.target === 'none') return [];
@@ -432,6 +447,7 @@ function cleanup(s: HState, killer?: { p: PI; cls: HClass; unit?: HUnit }) {
         P.board.splice(idx, 1);
         if (isBomb(u)) {
           s.log.push({ t: 'defused' });
+          if (HS.defuseWins && s.winner === null) { s.winner = foe(p); s.reason = 'defuse'; continue; }
           if (HS.defuseBonus) { s.p[foe(p)].bonus += HS.defuseBonus; s.log.push({ t: 'cash', p: foe(p), n: HS.defuseBonus }); }
           continue;
         }
@@ -487,7 +503,7 @@ function summon(s: HState, p: PI, id: string, at?: number, mode?: number): HUnit
   const c = hcard(id), P = s.p[p];
   if (P.board.length >= HS.board) return null;
   const u: HUnit = {
-    uid: newId(s), card: id, atk: c.atk ?? 0, hp: c.hp ?? 1, maxHp: c.hp ?? 1, armor: c.armor ?? 0, temp: 0, kw: [...(c.kw ?? [])],
+    uid: newId(s), card: id, atk: c.atk ?? 0, hp: c.kind === 'bomb' ? bombHpOf(P.hero.agent) : c.hp ?? 1, maxHp: c.kind === 'bomb' ? bombHpOf(P.hero.agent) : c.hp ?? 1, armor: c.armor ?? 0, temp: 0, kw: [...(c.kw ?? [])],
     attacks: 0, sick: true, blind: false, reloading: false, burn: 0, dealt: 0, shot: false, marked: false, bomb: c.kind === 'bomb' ? HS.bombTimer : 0,
   };
   // Режим стрельбы (карты с выбором)
@@ -590,7 +606,7 @@ export function playCard(s: HState, p: PI, uid: string, target?: string, at?: nu
     case 'helmet': if (tu) { addArmor(s, tu, 1); tu.hp++; tu.maxHp++; addKw(tu, 'helmet'); s.log.push({ t: 'buff', id: tu.uid, text: 'Шлем' }); } break;
     case 'medkit': if (target) heal(s, target, 4); break;
     case 'boost': if (tu) { tu.atk += 2; s.log.push({ t: 'buff', id: tu.uid, text: '+2 атаки' }); } break;
-    case 'kit': { draw(s, p); const b = en.board.find(isBomb); if (b) damageUnit(s, b, HS.kitDmg); break; }
+    case 'kit': { draw(s, p); const b = openBombs(en.board)[0]; if (b) damageUnit(s, b, HS.kitDmg); break; }
     case 'drop': P.money += 1000; s.log.push({ t: 'cash', p, n: 1000 }); break;
     // фирменные
     case 'sw_armor': for (const x of P.board) if (!isBomb(x)) { addArmor(s, x, 1); x.hp++; x.maxHp++; } break;
@@ -598,7 +614,7 @@ export function playCard(s: HState, p: PI, uid: string, target?: string, at?: nu
     case 'fb_intel': if (en.traps.length) { s.log.push({ t: 'buff', id: heroId(foe(p)), text: `−${en.traps.length} засад` }); en.traps = []; } draw(s, p); draw(s, p); break;
     case 'sa_breach': for (const x of en.board) blind(s, x); break;
     case 'gi_shield': if (tu) { tu.hp += 3; tu.maxHp += 3; addArmor(s, tu, 1); addKw(tu, 'taunt'); s.log.push({ t: 'buff', id: tu.uid, text: 'Щит' }); } break;
-    case 'ph_fast': { const b = P.board.find(isBomb); if (b && b.bomb > 1) { b.bomb--; s.log.push({ t: 'bomb', left: b.bomb }); } else draw(s, p); break; }
+    case 'ph_fast': { const b = P.board.find(isBomb); if (b && b.bomb > 2) { b.bomb--; s.log.push({ t: 'bomb', left: b.bomb }); } else draw(s, p); break; }
     case 'el_rush': for (const x of P.board) if (!isBomb(x) && x.atk > 0) {
       x.atk++; x.temp++;
       if (x.sick && x.attacks === 0) { x.attacks = 1; addKw(x, 'rush'); }
@@ -628,14 +644,14 @@ export function usePower(s: HState, p: PI, target?: string): boolean {
   s.log.push({ t: 'power', p, target });
   const tu = target ? findUnit(s, target)?.u : undefined;
   switch (P.hero.agent) {
-    case 'ct_swat': P.hero.armor += 4; s.log.push({ t: 'armor', id: heroId(p), n: 4 }); for (const x of P.board) if (!isBomb(x)) addArmor(s, x, 1); break;
-    case 'ct_seal': if (target) damage(s, target, 2, { pierce: true }); break;
-    case 'ct_fbi': if (tu) damageUnit(s, tu, isBomb(tu) ? 4 : 1, { pierce: true }); break;
+    case 'ct_swat': P.hero.armor += 3; s.log.push({ t: 'armor', id: heroId(p), n: 3 }); for (const x of P.board) if (!isBomb(x)) { addArmor(s, x, 1); x.hp++; x.maxHp++; } break;
+    case 'ct_seal': if (target) { const fb = findUnit(s, target); damage(s, target, fb && isBomb(fb.u) ? 3 : 2, { pierce: true }); } break;
+    case 'ct_fbi': if (tu) damageUnit(s, tu, isBomb(tu) ? 2 : 1, { pierce: true }); break;
     case 'ct_sas': if (tu) blind(s, tu); break;
     case 'ct_gign': if (tu) { tu.atk += 1; tu.hp += 2; tu.maxHp += 2; s.log.push({ t: 'buff', id: tu.uid, text: '+1/+2' }); } break;
     case 't_phoenix': P.hero.atk += 3; s.log.push({ t: 'buff', id: heroId(p), text: 'Нож' }); break;
     case 't_elite': if (tu) { tu.atk += 1; tu.hp += 1; tu.maxHp += 1; if (tu.sick && tu.attacks === 0) { tu.attacks = 1; addKw(tu, 'rush'); } s.log.push({ t: 'buff', id: tu.uid, text: '+1 атаки' }); } break;
-    case 't_balkan': damageHero(s, foe(p), 2); break;
+    case 't_balkan': if (target) damage(s, target, 2); break;
     case 't_guerrilla': if (tu) { addKw(tu, 'stealth'); s.log.push({ t: 'buff', id: tu.uid, text: 'Глушитель' }); } break;
     case 't_pro': if (tu) damageUnit(s, tu, 3, { pierce: true }); break;
   }
@@ -656,7 +672,8 @@ export function attackTargets(s: HState, p: PI, id: string): string[] {
   const u = id === heroId(p) ? null : s.p[p].board.find((x) => x.uid === id)!;
   const sniper = !!u?.kw.includes('sniper');
   const smg = !!u && clsOf(u) === 'smg';
-  const visible = en.board.filter((x) => !x.kw.includes('stealth'));
+  // охраняемую бомбу не видно как цель, пока рядом стоит боец T
+  const visible = en.board.filter((x) => !x.kw.includes('stealth') && !(isBomb(x) && bombGuarded(en.board, x)));
   const bombs = visible.filter(isBomb).map((x) => x.uid);
   if (u?.kw.includes('sapper') && u.sick) return bombs;
   const taunts = visible.filter((x) => x.kw.includes('taunt') && !isBomb(x));
@@ -726,7 +743,7 @@ export function attack(s: HState, p: PI, from: string, to: string): boolean {
     const tu = en.board.find((x) => x.uid === to)!;
     const pierce = !!au?.kw.includes('pierce') || styleOf(P.hero.agent) === 'long';   // «Дальняя игра» бьёт сквозь броню
     if (isBomb(tu)) {
-      damageUnit(s, tu, au?.kw.includes('sapper') ? atk * 2 : atk);
+      damageUnit(s, tu, au?.kw.includes('sapper') ? atk + 2 : atk);
       if (au) au.dealt += atk;
       // «Охрана»: T рядом с бомбой стреляют в сапёра (как разминирование под огнём)
       const guards = HS.guardShot && !(HS.holdNoGuard && styleOf(P.hero.agent) === 'hold') ? withNeighbors(en.board, tu).filter((g) => g !== tu && !isBomb(g) && g.atk > 0 && !g.blind && g.hp > 0)
