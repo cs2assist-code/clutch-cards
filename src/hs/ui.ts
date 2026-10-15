@@ -10,7 +10,7 @@ import { recordRound, recordRoundsMatch, markTutorialDone } from '../stats';
 import { SIL } from './art-index';
 import { CLASS_RU, HCARDS, hcard, hImg, unitArt, KW_RU, MAP_RULES, matchup, POWERS, sigCards, STYLE_BEATS, STYLE_RU, styleOf, type HCard, type KW, type Style } from './cards';
 import {
-  attackTargets, attackBonus, canAttack, canSave, canShop, costOf, isClutch, isCovered, shopPrice, isBehind, lossBonus, maxHp, endTurn, findUnit, heroId, HS, incomeOf, mulligan, newGame, playTargets, powerTargets, startGame,
+  attackTargets, attackBonus, canAttack, canSave, canShop, costOf, isClutch, isCovered, shopPrice, isBehind, lossBonus, maxHp, endTurn, findUnit, heroId, HS, incomeOf, KILL_REWARD, mulligan, newGame, playTargets, powerTargets, startGame,
   type Diff, type Ev, type HState, type HUnit, type PI,
 } from './engine';
 import { apply, botMulligan, botStep, legalActions, type Action } from './ai';
@@ -1664,27 +1664,58 @@ const TUT_STEPS: TutStep[] = [
     target: () => null, done: () => false },
   { id: 'mull', anyTurn: true, text: 'Это ваша стартовая рука. Неудобные карты можно заменить, но сейчас рука хорошая. Нажмите «Оставить и начать».',
     target: () => '[data-act="hs-keep"]', done: () => S.phase !== 'mull' },
-  { id: 'money', info: true, text: () => `Деньги — это мана. Сейчас у вас ${money(me0().money)}, каждый ход доход растёт на $500. Цена — зелёный кристалл на карте.`,
+  // ── Деньги ──
+  { id: 'money', info: true, text: () => `Деньги — это мана, ими платят за карты. В первый ход ${money(HS.firstIncome)}, дальше доход растёт на ${money(HS.income)} каждый ход, но не больше ${money(HS.maxMoney)}. Сейчас у вас ${money(me0().money)}.`,
     target: () => '#cash0', done: () => false },
+  { id: 'money2', info: true, text: () => `Не потратили — до ${money(HS.carry)} перейдёт на следующий ход, остальное сгорит. Под суммой написано, сколько добавится в следующий ход: доход плюс награды.`,
+    target: () => '#cash0 .hs-next', done: () => false },
+  // ── Карта ──
+  { id: 'anatomy', info: true, text: 'Как читать карту: зелёная плашка — цена в тысячах (1,5 = $1500), автомат с цифрой — атака, сердце — здоровье, значок по центру — класс оружия. Любую карту можно нажать и прочитать её свойства.',
+    target: () => handSel(handUid('tec9')) ?? '.hs-hand .hc', done: () => false },
   { id: 'unit', text: 'Выставьте бойца: перетащите Tec-9 из руки на свой ряд — или нажмите его, затем «На стол».',
     target: () => playFlow('tec9'), allow: () => playAllow('tec9'), done: () => me0().board.some((u) => u.card === 'tec9'), need: () => !!handUid('tec9') },
   { id: 'rush', info: true, text: 'У Tec-9 «Рывок» — обычно он бьёт сразу. Но SWAT играет от обороны: против неё рывок не срабатывает. Боец атакует со следующего хода.',
     target: () => '.hs-board.b0 > [data-hid]', done: () => false, need: () => me0().board.length > 0 },
-  { id: 'end1', text: 'Больше в этом ходу делать нечего. Нажмите «Конец хода» — неистраченные деньги (до $3000) перейдут на следующий.',
+  { id: 'classes', info: true, text: 'Кто кого: ПП бьют снайперов (+2), дробовики — ПП, пистолеты и укрытия (+2), снайперы — дробовики и пулемёты (+2) и стреляют без ответа, винтовки пробивают броню. Цифра «+2» появится на цели, когда выберете атакующего.',
+    target: () => null, done: () => false },
+  { id: 'keywords', info: true, text: 'Свойства бойцов: Рывок — бьёт сразу; Хедшот — убивает бойца без шлема; Укрытие — враги сначала бьют его; Глушитель — невидим, пока не выстрелит; Очередь — две атаки; Перезарядка — после выстрела пропускает ход.',
+    target: () => null, done: () => false },
+  { id: 'end1', text: () => `Больше в этом ходу делать нечего. Нажмите «Конец хода» — неистраченные деньги (до ${money(HS.carry)}) перейдут на следующий.`,
     target: () => '.hs-end', done: () => S.s!.turn !== 0 },
+  // ── Ход 2: атака, награды, бомба ──
   { id: 'attack', text: () => (S.sel?.k === 'atk' ? 'Теперь выберите цель — подсвечены те, кого можно атаковать. Цифра на цели — бонус «кто кого».' : 'Ваш ход! Нажмите своего бойца, чтобы атаковать.'),
     target: () => (S.sel?.k === 'atk' ? '.tgt' : (() => { const u = me0().board.find((x) => canAttack(S.s!, 0, x.uid)); return u ? `[data-hid="${u.uid}"]` : null; })()),
     allow: () => ['.tgt', ...me0().board.filter((x) => canAttack(S.s!, 0, x.uid)).map((x) => `[data-hid="${x.uid}"]`)],
     done: () => me0().board.some((u) => u.shot), need: () => me0().board.some((u) => canAttack(S.s!, 0, u.uid) && attackTargets(S.s!, 0, u.uid).length > 0) },
+  { id: 'rewards', info: true, text: () => `Награды приходят в следующий ход. За убийство — по классу оружия убийцы: пистолет ${money(KILL_REWARD.pistol!)}, ПП ${money(KILL_REWARD.smg!)}, дробовик ${money(KILL_REWARD.shotgun!)}, винтовка, снайперка и пулемёт ${money(KILL_REWARD.rifle!)}. Первое убийство за ход (энтри) — ещё $300, у «Раша» $600.`,
+    target: () => '#cash0', done: () => false },
+  { id: 'lossbonus', info: true, text: () => `Бонус за отставание, как в CS: если у вашего героя на ${HS.lossGap}+ здоровья меньше, чем у соперника, каждый такой ход подряд даёт +${money(HS.lossStep)} (до +${money(HS.lossStep * HS.lossMax)}). Закладка бомбы — T +${money(HS.plantBonus)} (Phoenix ${money(1300)}), обезвреживание — CT +${money(HS.defuseBonus)}.`,
+    target: () => '#cash0', done: () => false },
   { id: 'bomb', text: () => (playStage() === 'place' ? 'Выберите место: поставьте бомбу рядом со своим бойцом — он будет стрелять в сапёров.' : 'Хватает денег на бомбу! Заложите C4: если CT не уничтожат её за 3 хода — победа T.'),
     target: () => playFlow('c4'), allow: () => playAllow('c4'), done: () => me0().board.some((u) => u.card === 'c4'), need: () => !!handUid('c4') && !!playTargets(S.s!, 0, 'c4') },
-  { id: 'end2', text: 'Бомба тикает — число на ней показывает, сколько ходов до взрыва. Заканчивайте ход.', target: () => '.hs-end', done: () => S.s!.turn !== 0 },
+  { id: 'bombinfo', info: true, text: () => `Число на бомбе — сколько ходов до взрыва. CT бьют её в обход укрытий, но сильнейший T рядом отвечает сапёру половиной атаки. Обезвредили — CT получают ${money(HS.defuseBonus)}, а бомба у T больше не появится.`,
+    target: () => { const b = me0().board.find((u) => u.card === 'c4'); return b ? `[data-hid="${b.uid}"]` : null; }, done: () => false },
+  { id: 'end2', text: 'Заканчивайте ход.', target: () => '.hs-end', done: () => S.s!.turn !== 0 },
+  // ── Ход 3: гранаты, снаряжение, бай-меню, сила героя ──
+  { id: 'nades', info: true, text: 'Гранаты: HE — 3 урона всем бойцам врага; молотов и зажигательная — 4 урона и горение; флешка — боец и соседи пропустят атаку и не ответят; дым — снайперы и пулемёты врага пропустят атаку; Zeus — 4 урона сквозь броню, бьёт и бомбу.',
+    target: () => handSel(handUid('flash') ?? handUid('he')), done: () => false },
+  { id: 'gear', info: true, text: 'Снаряжение: бронежилет — +1 брони и здоровья, шлем — то же и защита от хедшота, аптечка — +4 здоровья, буст — +2 атаки, «Дроп» — сразу +$1000. Броня режет урон пистолетов, ПП, дробовиков и гранат, но не винтовок и снайперок.',
+    target: () => null, done: () => false },
+  { id: 'shop', info: true, text: () => `Бай-меню под деньгами: за ${money(HS.shopCost)} выбрать 1 из ${HS.shopChoice} карт, каждая следующая покупка за ход дороже на ${money(HS.shopCost)}. А в начале хода вы открываете 2 верхние карты колоды и берёте одну.`,
+    target: () => '.hs-shopbtn', done: () => false },
   { id: 'power', text: 'Кнопка справа от портрета — сила героя, раз в ход. У Phoenix это нож: герой бьёт сильнее. Нажмите её.',
     target: () => '[data-act="hs-power"]', done: () => me0().powerUsed, need: () => !!powerTargets(S.s!, 0) },
   { id: 'hero', text: () => (S.sel?.k === 'atk' ? 'Выберите цель для удара героем.' : 'Теперь ударьте ножом: нажмите своего героя, затем цель.'),
     target: () => (S.sel?.k === 'atk' ? '.tgt' : '[data-hid="h0"]'), allow: () => ['.tgt', '[data-hid="h0"]'],
     done: () => me0().hero.attacked, need: () => canAttack(S.s!, 0, 'h0') && attackTargets(S.s!, 0, 'h0').length > 0 },
-  { id: 'free', info: true, text: 'Основы вы знаете! Дальше играйте сами: бай-меню слева докупает карты, засады ставятся рубашкой вверх. Удачи!',
+  // ── Особые карты и правила боя ──
+  { id: 'traps', info: true, text: () => `Засады лежат рубашкой вверх (до ${HS.traps}) и срабатывают сами: «Держит угол» — 3 урона атакующему, «Растяжка» — 2 урона выставленному бойцу, «Фейк» — гасит гранату врага, «Тиммейт на подхвате» — замена погибшему, «Ниндзя-дефьюз» у CT — тихо снимает бомбу.`,
+    target: () => null, done: () => false },
+  { id: 'vet', info: true, text: 'Боец, который убил, становится ветераном ★ и получает бонус своего класса. Убили бойца, который ещё не стрелял, — его оружие уходит вам в руку трофеем, бесплатно. Последний боец против двух и больше — клатч: бьёт на 2 сильнее.',
+    target: () => null, done: () => false },
+  { id: 'sig', info: true, text: 'У каждого агента своя сила героя и две фирменные карты — они лежат только в его колоде. Phoenix: «Подрывник» взрывается при гибели, «Быстрая закладка» ускоряет бомбу. Все карты с описанием — в меню, «Все карты».',
+    target: () => null, done: () => false },
+  { id: 'free', info: true, text: 'Основы вы знаете! Дальше играйте сами. Нажмите любую карту или бойца, чтобы прочитать подробности. Удачи!',
     target: () => null, done: () => false },
 ];
 

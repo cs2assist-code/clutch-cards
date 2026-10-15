@@ -165,3 +165,48 @@ h4.sub, .sub { font: 600 11px var(--font-body) !important; letter-spacing: .18em
 .hs-dropmark { background: var(--cs-go) !important; box-shadow: 0 0 10px var(--cs-go) !important; }
 .hs-ghost.ok { box-shadow: 0 10px 24px rgba(0,0,0,.75), 0 0 0 2px var(--cs-go), 0 0 16px var(--cs-go) !important; }
 .hc .hc-name { padding: 0 3px !important; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+
+/* ─────────── Атака — силуэт AK-47 с цифрой в ствольной коробке, здоровье — сердце ─────────── */
+:root { --ic-ak: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 44'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0' stop-color='%23ffd36b'/%3E%3Cstop offset='.55' stop-color='%23e79a22'/%3E%3Cstop offset='1' stop-color='%23a85f0b'/%3E%3C/linearGradient%3E%3C/defs%3E%3Cg fill='url%28%23g%29' stroke='%2307090b' stroke-width='1.8' stroke-linejoin='round'%3E%3Cpath d='M1.5 12h22v4.5h-22z'/%3E%3Cpath d='M6 7.5h3.4v5h-3.4z'/%3E%3Cpath d='M21 9.5h18v10H21z'/%3E%3Cpath d='M51 27c1.4 5.5.6 10.5-2.6 14.6l-9.4-2.9c2.8-3.4 3.6-7.4 2.6-11.7z'/%3E%3Cpath d='M65 25h7.5l3 13.5h-7.6z'/%3E%3Cpath d='M73 8.5L98.5 13v14l-8 1.2L73 23z'/%3E%3Cpath d='M37 3.5h37.5v23H37z'/%3E%3C/g%3E%3C/svg%3E"); --ic-heart: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 26 24'%3E%3Cdefs%3E%3ClinearGradient id='h' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0' stop-color='%23ff8a8e'/%3E%3Cstop offset='.5' stop-color='%23e2343c'/%3E%3Cstop offset='1' stop-color='%239c1119'/%3E%3C/linearGradient%3E%3C/defs%3E%3Cpath d='M13 22.6S3.6 16.8 1.6 11.4C0 7 2.7 2 7.3 2c2.5 0 4.3 1.4 5.7 3.4C14.4 3.4 16.2 2 18.7 2c4.6 0 7.3 5 5.7 9.4C22.4 16.8 13 22.6 13 22.6z' fill='url%28%23h%29' stroke='%2307090b' stroke-width='1.5' stroke-linejoin='round'/%3E%3Cpath d='M6.5 5.5c-1.8.4-3 2.3-2.6 4.3' fill='none' stroke='rgba%28255%2C255%2C255%2C.55%29' stroke-width='1.4' stroke-linecap='round'/%3E%3C/svg%3E"); }
+.hc-atk, .hu-atk, .hh-atk { background: var(--ic-ak) center / 100% 100% no-repeat !important; clip-path: none !important; border-radius: 0 !important;
+  box-shadow: none !important; width: 44px !important; height: 19px !important; min-width: 0 !important; padding: 0 !important; display: block !important;
+  filter: drop-shadow(0 2px 2px rgba(0,0,0,.75)); background-blend-mode: normal !important; }
+.hc-atk i, .hu-atk i, .hh-atk i { position: absolute !important; left: 55.7%; top: 34%; translate: -50% -50%; font-size: 12px !important; line-height: 1; color: #fff !important; }
+.hc-atk { left: -9px !important; bottom: -5px !important; }
+.hc.big .hc-atk { width: 56px !important; height: 24px !important; left: -14px !important; }
+.hc.big .hc-atk i { font-size: 15px !important; }
+.hu-atk { left: -9px !important; bottom: 0 !important; }
+.hh-atk { left: -22px !important; bottom: -4px !important; width: 50px !important; height: 21px !important; }
+.hh-atk i { font-size: 13px !important; }
+.hu-atk.up i, .hc-atk.up i { color: #c4ff8a !important; }
+.hc-hp, .hu-hp, .hh-hp { background: var(--ic-heart) center / 100% 100% no-repeat !important; border-radius: 0 !important; box-shadow: none !important; clip-path: none !important;
+  filter: drop-shadow(0 2px 2px rgba(0,0,0,.75)); width: 25px !important; height: 23px !important; min-width: 0 !important; padding: 0 !important; display: grid !important; place-items: center !important; }
+.hc-hp i, .hu-hp i, .hh-hp i { position: relative; top: -1.5px; font-size: 12px !important; }
+.hc.big .hc-hp { width: 31px !important; height: 28px !important; } .hc.big .hc-hp i { font-size: 15px !important; }
+.hh-hp { width: 31px !important; height: 28px !important; } .hh-hp i { font-size: 14px !important; }
+.hu-hp.dmg i, .hh-hp.dmg i { color: #ffd0d0 !important; } .hu-hp.up i { color: #c4ff8a !important; }
+.hu-cls { left: 64% !important; }
+.hc-full ~ .hc-type, .hc-type { left: 66% !important; }
+
+/* Баннеры посреди экрана — тёмная полоса с цветной кромкой, как оповещения CS2 */
+.fx-banner span { padding: 10px 26px !important; max-width: 92vw; border-radius: 2px !important; background: rgba(10,12,15,.9) !important;
+  border: none !important; border-top: 2px solid #e9edf2 !important; box-shadow: 0 10px 30px rgba(0,0,0,.6) !important; }
+.fx-banner.bomb span { border-top-color: var(--cs-red) !important; background: linear-gradient(rgba(70,10,14,.92), rgba(20,6,8,.92)) !important; }
+.fx-banner.defuse span { border-top-color: var(--cs-ct) !important; background: linear-gradient(rgba(14,30,58,.92), rgba(8,12,22,.92)) !important; }
+.fx-banner.info span { border-top-color: var(--cs-go) !important; }
+.fx-banner b { font: 600 clamp(15px, 5.4vw, 26px)/1.18 var(--font-title) !important; letter-spacing: .08em !important; text-transform: uppercase !important;
+  color: #fff !important; text-shadow: 0 2px 6px rgba(0,0,0,.6) !important; text-align: center; -webkit-text-stroke: 0 !important; background: none !important; -webkit-background-clip: initial !important; background-clip: initial !important; }
+.fx-banner span { clip-path: none !important; }
+.fx-banner b { filter: none !important; }
+
+/* Обучение: зелёное «дыхание» вместо золотого */
+.tut-ring { border-radius: 4px !important; border-color: var(--cs-go) !important; }
+.tut-ring.on { animation: tutBreathGo 1.8s ease-in-out infinite !important; }
+@keyframes tutBreathGo {
+  0%, 100% { transform: scale(1); box-shadow: 0 0 0 2px rgba(5,6,8,.9), 0 0 12px 2px rgba(122,201,67,.45); }
+  50% { transform: scale(1.045); box-shadow: 0 0 0 2px rgba(5,6,8,.9), 0 0 30px 10px rgba(122,201,67,.75); }
+}
+.tut-hl { animation: tutGlowGo 1.8s ease-in-out infinite !important; }
+@keyframes tutGlowGo { 0%, 100% { filter: brightness(1); } 50% { filter: brightness(1.3) drop-shadow(0 0 8px rgba(122,201,67,.8)); } }
+.tut { border-radius: 4px !important; border: 1px solid var(--cs-line) !important; border-left: 3px solid var(--cs-go) !important; box-shadow: 0 12px 30px rgba(0,0,0,.65) !important; }
+.tut p { font-size: 13.5px !important; }
