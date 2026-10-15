@@ -454,7 +454,19 @@ async function playEvents(evs: Ev[], sn: fx.Snapshot, p: PI) {
         await wait(700); break;
       }
       case 'bomb': if (e.left < HS.bombTimer) { c4.beep(e.left <= 1); fx.banner(`До взрыва: ${e.left}`, 'bomb', 900); await wait(700); } break;
-      case 'boom': c4.boom(); haptic.hit('heavy'); setTimeout(() => haptic.hit('heavy'), 160); fx.quake(hooks.root.querySelector('.hs')); fx.banner('Бомба взорвалась', 'bomb', 1400); await wait(1100); break;
+      case 'boom': {
+        // Последний отсчёт (частые писки), затем взрыв: вспышка, огненный шар, волны, обломки, отброшенные бойцы, дым
+        const scene = hooks.root.querySelector<HTMLElement>('.hs');
+        const bombEl = scene?.querySelector<HTMLElement>('.hu.bomb') ?? null;
+        const at = bombEl?.getBoundingClientRect() ?? null;
+        const arm = FAST ? 0 : 700;
+        for (let k = 0; k < 5; k++) setTimeout(() => c4.beep(true), k * 130);
+        setTimeout(() => { c4.boom(); haptic.hit('heavy'); setTimeout(() => haptic.hit('heavy'), 140); setTimeout(() => haptic.hit('rigid'), 320); }, arm);
+        await fx.c4Explosion(at, scene, arm);
+        fx.banner('Бомба взорвалась', 'bomb', 1600);
+        await wait(1200);
+        break;
+      }
       case 'defused': c4.defuseStart(); await fx.progress('Разминирование', 700, 'defuse'); c4.defused(); speak('bombdef', 'hq'); fx.banner('Бомба обезврежена', 'defuse', 1300); await wait(900); break;
       case 'entry': { const r = rectOf(e.id, sn); if (r) fx.splash(r, 'энтри', 'heal'); if (e.p === 0) fx.cash(elOf('cash0')?.getBoundingClientRect() ?? r ?? new DOMRect(), 'Энтри-фраг'); await wait(250); break; }
       case 'mark': { const r = rectOf(e.id, sn); if (r) fx.splash(r, 'трейд', 'miss'); await wait(150); break; }

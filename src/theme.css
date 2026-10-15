@@ -437,3 +437,67 @@ h4.sub, .sub { font: 600 11px var(--font-body) !important; letter-spacing: .18em
   .hs-hero.p1 .hh-name { display: none; }
   .hs-hero.p1 .hs-herowrap { margin-top: -30px; }
 }
+
+/* ═══ Взрыв C4 ═══ */
+.hu.bomb.c4-arming { animation: c4arm .12s linear infinite; filter: drop-shadow(0 0 12px #ff2a2a) brightness(1.3); z-index: 6; }
+@keyframes c4arm { 50% { transform: translate(1.5px, -1px) scale(1.06); } }
+.fx-c4-arm { z-index: 9; }
+.fx-c4-arm i { position: absolute; left: 0; top: 0; width: 160px; height: 160px; margin: -80px; border-radius: 50%; border: 3px solid rgba(255,40,40,.9);
+  box-shadow: 0 0 18px rgba(255,40,40,.8), inset 0 0 18px rgba(255,40,40,.5); animation: c4ring .35s ease-in infinite; }
+.fx-c4-arm i:nth-child(2) { animation-delay: .12s; } .fx-c4-arm i:nth-child(3) { animation-delay: .24s; }
+@keyframes c4ring { from { transform: scale(1); opacity: 0; } 30% { opacity: 1; } to { transform: scale(.15); opacity: 0; } }
+.fx-c4-flash { inset: 0; z-index: 30; background: #fff; animation: c4flash .9s ease-out forwards; mix-blend-mode: screen; }
+@keyframes c4flash { 0% { opacity: .9; background: #fff; } 18% { opacity: .95; background: #ffe3a8; } 100% { opacity: 0; background: #ff7a20; } }
+.fx-c4-core { z-index: 12; width: 0; height: 0; }
+.fx-c4-core::before { content: ''; position: absolute; width: 240px; height: 240px; margin: -120px; border-radius: 50%;
+  background: radial-gradient(circle, #fff 0 18%, #fff3b0 30%, rgba(255,170,40,.85) 48%, rgba(255,70,0,0) 70%); animation: c4core 1.1s ease-out forwards; }
+@keyframes c4core { 0% { transform: scale(.1); opacity: 1; } 25% { transform: scale(1.3); opacity: 1; } 100% { transform: scale(2.2); opacity: 0; } }
+.fx-c4-fire { z-index: 11; width: 0; height: 0; }
+.fx-c4-fire i { position: absolute; width: var(--big); height: var(--big); margin: calc(var(--big) / -2); border-radius: 50%; mix-blend-mode: screen;
+  background: radial-gradient(circle, rgba(255,240,180,.95) 0 12%, rgba(255,160,40,.9) 28%, rgba(220,60,10,.75) 46%, rgba(80,20,5,.0) 68%);
+  animation: c4fire 1.8s cubic-bezier(.15,.8,.3,1) forwards; }
+.fx-c4-fire i:nth-child(2) { translate: -22% 8%; animation-delay: .05s; scale: .7; }
+.fx-c4-fire i:nth-child(3) { translate: 25% -6%; animation-delay: .09s; scale: .65; }
+.fx-c4-fire i:nth-child(4) { translate: 6% -26%; animation-delay: .13s; scale: .55; }
+.fx-c4-fire i:nth-child(5) { translate: -8% 22%; animation-delay: .17s; scale: .5; }
+@keyframes c4fire { 0% { transform: scale(.05); opacity: 1; } 35% { opacity: 1; } 100% { transform: scale(1); opacity: 0; filter: blur(6px) brightness(.6); } }
+.fx-c4-wave { z-index: 13; width: 0; height: 0; }
+.fx-c4-wave::before { content: ''; position: absolute; width: var(--big); height: var(--big); margin: calc(var(--big) / -2); border-radius: 50%;
+  border: 6px solid rgba(255,230,180,.85); box-shadow: 0 0 30px rgba(255,180,80,.7), inset 0 0 40px rgba(255,200,120,.35);
+  animation: c4wave .9s cubic-bezier(.1,.7,.3,1) forwards; }
+@keyframes c4wave { from { transform: scale(.02); opacity: 1; border-width: 14px; } to { transform: scale(1); opacity: 0; border-width: 1px; } }
+.fx-c4-debris, .fx-c4-sparks { z-index: 14; width: 0; height: 0; }
+.fx-c4-debris i { position: absolute; width: var(--s); height: calc(var(--s) * .7); margin: calc(var(--s) / -2); background: linear-gradient(#5b5148, #1f1a16); border-radius: 2px;
+  box-shadow: 0 0 0 1px rgba(0,0,0,.6); animation: c4deb var(--t) cubic-bezier(.2,.7,.4,1) forwards; }
+@keyframes c4deb { from { transform: translate(0, 0) rotate(0); opacity: 1; } 80% { opacity: 1; } to { transform: translate(var(--dx), calc(var(--dy) + 90px)) rotate(var(--rot)); opacity: 0; } }
+.fx-c4-sparks b { position: absolute; width: 3px; height: 3px; border-radius: 50%; background: #ffe7a0; box-shadow: 0 0 6px 2px #ff9a2a;
+  animation: c4spark var(--t) ease-out var(--d) forwards; opacity: 0; }
+@keyframes c4spark { 0% { transform: translate(0, 0); opacity: 1; } 100% { transform: translate(var(--dx), calc(var(--dy) + 40px)) scale(.3); opacity: 0; } }
+.fx-c4-smoke { z-index: 10; width: 0; height: 0; }
+.fx-c4-smoke i { position: absolute; left: var(--x); width: 150px; height: 150px; margin: -75px; border-radius: 50%; scale: var(--s);
+  background: radial-gradient(circle, rgba(140,128,116,.85), rgba(80,72,64,.6) 45%, transparent 70%); filter: blur(4px);
+  animation: c4smoke 2.4s ease-out var(--d) forwards; opacity: 0; }
+@keyframes c4smoke { 0% { transform: translateY(0) scale(.3); opacity: 0; } 15% { opacity: .95; } 100% { transform: translateY(-190px) scale(1.9); opacity: 0; } }
+.fx-c4-haze { inset: 0; z-index: 9; background: radial-gradient(ellipse at 50% 50%, rgba(255,140,60,.14), rgba(40,30,22,.38) 70%); animation: c4haze 2.6s ease-out forwards; }
+@keyframes c4haze { 0% { opacity: 0; } 20% { opacity: 1; } 100% { opacity: 0; } }
+.fx-c4-ash { inset: 0; z-index: 15; }
+.fx-c4-ash i { position: absolute; left: var(--x); top: -10px; width: 4px; height: 4px; border-radius: 1px; background: #8a8178; opacity: 0;
+  animation: c4ash var(--t) linear var(--d) forwards; }
+@keyframes c4ash { 0% { transform: translate(0, 0) rotate(0); opacity: .9; } 100% { transform: translate(40px, 105vh) rotate(540deg); opacity: .2; } }
+.quake-c4 { animation: quakeC4 .9s cubic-bezier(.36,.07,.19,.97); }
+@keyframes quakeC4 {
+  0% { transform: translate(0, 0) scale(1.03); } 8% { transform: translate(-14px, 9px) rotate(-.8deg); } 16% { transform: translate(12px, -10px) rotate(.7deg); }
+  26% { transform: translate(-10px, 6px) rotate(-.5deg); } 38% { transform: translate(8px, -5px); } 52% { transform: translate(-5px, 3px); }
+  68% { transform: translate(3px, -2px); } 84% { transform: translate(-1px, 1px); } 100% { transform: none; } }
+.c4-blasted { animation: c4blast 1.2s cubic-bezier(.2,.9,.3,1); }
+@keyframes c4blast {
+  0% { transform: none; filter: none; }
+  15% { transform: translate(var(--bx), var(--by)) rotate(calc(var(--bx) * .4deg)); filter: brightness(2.2) sepia(.6); }
+  45% { filter: brightness(.55) sepia(.8) saturate(1.4); }
+  100% { transform: none; filter: none; } }
+
+.fx-c4-scorch { z-index: 8; width: 0; height: 0; }
+.fx-c4-scorch::before { content: ''; position: absolute; width: 220px; height: 150px; margin: -75px -110px; border-radius: 50%;
+  background: radial-gradient(ellipse, rgba(10,6,4,.85) 0 25%, rgba(30,16,8,.55) 45%, rgba(255,110,30,.18) 60%, transparent 72%);
+  animation: c4scorch 3s ease-out forwards; }
+@keyframes c4scorch { 0% { opacity: 0; transform: scale(.4); } 15% { opacity: 1; transform: scale(1); } 70% { opacity: .9; } 100% { opacity: 0; } }

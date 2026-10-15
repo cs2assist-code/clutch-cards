@@ -317,3 +317,60 @@ export function arcIn(el: HTMLElement | null, from: DOMRect | null) {
     put('fx-dustring', a.left + a.width / 2, a.top + a.height / 2, '', 600);
   }, 430 * Math.max(speed, 0.2));
 }
+
+/** Взрыв C4: последние писки и красное кольцо, затем вспышка, огненный шар, ударные волны,
+ *  обломки и искры, бойцов отбрасывает и опаляет, сильная тряска, столб дыма и пыль, оседающая на стол.
+ *  armMs — сколько длится «последний отсчёт» до вспышки (в это время вызывающий пищит бомбой). */
+export async function c4Explosion(at: DOMRect | null, scene: HTMLElement | null, armMs = 700): Promise<void> {
+  const W = innerWidth, H = innerHeight;
+  const c = at ? center(at) : { x: W / 2, y: H / 2 };
+  const bombEl = scene?.querySelector<HTMLElement>('.hu.bomb') ?? null;
+  if (reduced()) { put('fx-c4-flash', 0, 0, '', 500); await wait(400); return; }
+  // 1. Последний отсчёт: бомба дрожит, красное кольцо сжимается к ней
+  bombEl?.classList.add('c4-arming');
+  put('fx-c4-arm', c.x, c.y, '<i></i><i></i><i></i>', armMs + 100);
+  await wait(armMs);
+  // 2. Вспышка и огненный шар
+  bombEl?.classList.remove('c4-arming');
+  const big = Math.hypot(Math.max(c.x, W - c.x), Math.max(c.y, H - c.y)) * 2.2;
+  put('fx-c4-flash', 0, 0, '', 900);
+  put('fx-c4-core', c.x, c.y, '', 1100);
+  put('fx-c4-scorch', c.x, c.y, '', 3000);
+  put('fx-c4-fire', c.x, c.y, '<i></i><i></i><i></i><i></i><i></i>', 1900).style.setProperty('--big', `${big * 0.55}px`);
+  for (const [d, k] of [[0, 1], [160, 0.7], [320, 0.45]] as const) {
+    setTimeout(() => put('fx-c4-wave', c.x, c.y, '', 900).style.setProperty('--big', `${big * k}px`), d * speed);
+  }
+  // обломки и искры
+  const debris = Array.from({ length: 26 }, () => {
+    const a = Math.random() * Math.PI * 2, d = 120 + Math.random() * Math.min(W, H) * 0.55;
+    const s = 4 + Math.random() * 9;
+    return `<i style="--dx:${(Math.cos(a) * d).toFixed(0)}px;--dy:${(Math.sin(a) * d - 40).toFixed(0)}px;--rot:${(Math.random() * 900 - 450).toFixed(0)}deg;--s:${s.toFixed(1)}px;--t:${(700 + Math.random() * 600).toFixed(0)}ms"></i>`;
+  }).join('');
+  put('fx-c4-debris', c.x, c.y, debris, 1500);
+  const sparks = Array.from({ length: 34 }, () => {
+    const a = Math.random() * Math.PI * 2, d = 60 + Math.random() * 260;
+    return `<b style="--dx:${(Math.cos(a) * d).toFixed(0)}px;--dy:${(Math.sin(a) * d).toFixed(0)}px;--t:${(450 + Math.random() * 700).toFixed(0)}ms;--d:${(Math.random() * 120).toFixed(0)}ms"></b>`;
+  }).join('');
+  put('fx-c4-sparks', c.x, c.y, sparks, 1400);
+  // 3. Тряска и отброшенные взрывом бойцы и герои
+  if (scene) {
+    scene.classList.remove('quake-c4'); void scene.offsetWidth; scene.classList.add('quake-c4');
+    setTimeout(() => scene.classList.remove('quake-c4'), 1000 * speed);
+    for (const el of scene.querySelectorAll<HTMLElement>('.hu:not(.bomb), .hh')) {
+      const r = el.getBoundingClientRect(), dx = r.left + r.width / 2 - c.x, dy = r.top + r.height / 2 - c.y;
+      const dist = Math.max(40, Math.hypot(dx, dy)), push = Math.min(26, 4200 / dist);
+      el.style.setProperty('--bx', `${((dx / dist) * push).toFixed(1)}px`);
+      el.style.setProperty('--by', `${((dy / dist) * push).toFixed(1)}px`);
+      el.classList.remove('c4-blasted'); void el.offsetWidth; el.classList.add('c4-blasted');
+    }
+  }
+  // 4. Столб дыма, пепел и пыль
+  setTimeout(() => {
+    const puffs = Array.from({ length: 9 }, (_, i) => `<i style="--x:${(Math.random() * 120 - 60).toFixed(0)}px;--d:${i * 70}ms;--s:${(0.8 + Math.random() * 0.8).toFixed(2)}"></i>`).join('');
+    put('fx-c4-smoke', c.x, c.y, puffs, 2600);
+    const ash = Array.from({ length: 22 }, () => `<i style="--x:${(Math.random() * W).toFixed(0)}px;--d:${(Math.random() * 900).toFixed(0)}ms;--t:${(1600 + Math.random() * 1200).toFixed(0)}ms"></i>`).join('');
+    put('fx-c4-ash', 0, 0, ash, 3000);
+    put('fx-c4-haze', 0, 0, '', 2600);
+  }, 250 * speed);
+  await wait(900);
+}
