@@ -13,6 +13,7 @@ import { startDuelCode } from './online/client';
 import { agentArt, cssUrl, esc } from './art';
 import { UI_IMG } from './hs/art-index';
 import './menu.css';
+import './theme.css';
 import * as fx from './fx';
 import { haptic, initTelegram, setBackButton } from './telegram';
 

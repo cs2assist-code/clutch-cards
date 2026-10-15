@@ -1535,7 +1535,7 @@ function lobbyHTML() {
   return `<main class="rm scroll rm-setup ol">${head}${card}
     ${L.err ? `<p class="ol-err">${esc(L.err)}</p>` : ''}
     ${busy}
-    <p class="note">Рейтинговая — одна игра, ход ${Math.round(75)} с, вето карт. Дуэль — без рейтинга. Связь пропала — у вас минута, чтобы вернуться.</p>
+    <p class="note">Рейтинговая — одна игра, ход 30 с, вето карт. Дуэль — без рейтинга. Связь пропала — у вас минута, чтобы вернуться.</p>
     ${agentPickHTML()}
   </main>`;
 }

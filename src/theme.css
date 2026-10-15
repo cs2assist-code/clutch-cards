@@ -1,0 +1,167 @@
+/* ═══════════════════════════════════════════════════════════════════
+   Тема в стиле CS2 — подключается последней и перекрывает «золотой» скин:
+   тёмное стекло, сталь, острые углы, узкий шрифт Oswald, зелёная главная кнопка,
+   оранжевый T и синий CT. Цвета и шрифты меняются через токены, остальное — точечно.
+   ═══════════════════════════════════════════════════════════════════ */
+:root {
+  --font-title: 'Oswald', 'Russo One', 'Onest', sans-serif;
+  --font-display: 'Oswald', 'Russo One', 'Arial Narrow', sans-serif;
+  /* бывшее «золото» → сталь */
+  --g-hi: #ffffff; --g1: #c9d0d9; --g2: #8d97a4; --g3: #59626e; --g4: #2b3139; --g-dk: #07090b;
+  --gold-grad: linear-gradient(160deg, #e6eaef 0%, #a9b2be 22%, #59626e 48%, #b9c1cb 70%, #4a525d 100%);
+  --gold: #e9edf2; --gold-hi: #ffffff; --gold-lo: #6b7582;
+  --stone-hi: #262c34; --stone: #181c22; --stone-dk: #0e1115;
+  --wood-hi: #262c34; --wood: #181c22; --wood-dk: #0e1115;
+  --parch: #e6eaf0;
+  --cs-panel: rgba(16, 19, 24, .78); --cs-panel-hi: rgba(28, 33, 41, .9); --cs-line: rgba(255, 255, 255, .09); --cs-line-hi: rgba(255, 255, 255, .22);
+  --cs-go: #7ac943; --cs-go-hi: #8bd655; --cs-go-dk: #5aa632; --cs-t: #e8a33d; --cs-ct: #5c9ce6; --cs-red: #e5484d;
+  --cs-muted: #98a2ae;
+}
+body { background: #0b0d10; }
+
+/* ─────────── Кнопки ─────────── */
+.primary {
+  font: 700 15px/1.1 var(--font-title); letter-spacing: .09em; text-transform: uppercase; text-shadow: none; color: #0b1a05;
+  background: linear-gradient(180deg, var(--cs-go-hi), var(--cs-go) 45%, var(--cs-go-dk)); border-radius: 3px;
+  box-shadow: 0 0 0 1px rgba(0,0,0,.45), 0 6px 18px rgba(122,201,67,.18); transition: filter .15s, transform .12s;
+}
+.primary:hover:not(:disabled) { filter: brightness(1.07); }
+.primary:active:not(:disabled) { transform: translateY(1px); box-shadow: 0 0 0 1px rgba(0,0,0,.45); }
+.primary:disabled { filter: grayscale(1) brightness(.55); }
+.big-btn { font-size: 19px; padding: 15px; letter-spacing: .12em; }
+.ghost, .menu-links button {
+  font: 500 13px/1.2 var(--font-body); letter-spacing: .02em; color: #e6eaf0; text-shadow: none; border-radius: 3px;
+  background: var(--cs-panel); border: 1px solid var(--cs-line); box-shadow: none; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+  transition: background .15s, border-color .15s;
+}
+.ghost:hover:not(:disabled), .menu-links button:hover { background: var(--cs-panel-hi); border-color: var(--cs-line-hi); }
+.ghost.big-btn { font: 600 16px var(--font-title); letter-spacing: .1em; text-transform: uppercase; }
+.danger, .ghost.danger { color: #fff; background: rgba(229,72,77,.18); border: 1px solid rgba(229,72,77,.55); border-radius: 3px; box-shadow: none; }
+
+/* Переключатели */
+.seg { border-radius: 3px; padding: 2px; gap: 2px; background: rgba(8,10,13,.7); border: 1px solid var(--cs-line); box-shadow: none; }
+.seg button { border-radius: 2px; font: 500 12.5px var(--font-body); color: var(--cs-muted); text-transform: none; }
+.seg button.on { color: #0b0d10; background: #e9edf2; box-shadow: none; font-weight: 600; }
+
+/* ─────────── Панели, окна, заголовки ─────────── */
+.hs-ovbox, .rm-detail, .hs-counter, .rm-help {
+  border-radius: 4px !important; background: rgba(14,17,22,.96) !important; border: 1px solid var(--cs-line) !important;
+  box-shadow: 0 18px 40px rgba(0,0,0,.65) !important;
+}
+.hs-ovbox h2, .hs-ovbox h3, .rm-title, .hs-title, button.hs-title {
+  font-family: var(--font-title) !important; text-transform: uppercase; letter-spacing: .1em; color: #eef1f4 !important; text-shadow: none !important; background: none !important;
+  -webkit-background-clip: initial !important; background-clip: initial !important;
+}
+.hs-ovbox.win h2 { color: var(--cs-go) !important; } .hs-ovbox.lose h2 { color: var(--cs-red) !important; }
+h4.sub, .sub { font: 600 11px var(--font-body) !important; letter-spacing: .18em !important; text-transform: uppercase; color: var(--cs-muted) !important; }
+.note { color: var(--cs-muted); }
+.hs-ov { background: rgba(5,7,9,.72); backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px); }
+
+/* Выбор агента */
+.rm-agent { border-radius: 3px !important; background: var(--cs-panel) !important; border: 1px solid var(--cs-line) !important; box-shadow: none !important; position: relative; overflow: hidden; }
+.rm-agent::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--c, #888); opacity: .35; }
+.rm-agent.f-T { --c: var(--cs-t); } .rm-agent.f-CT { --c: var(--cs-ct); }
+.rm-agent.on { border-color: color-mix(in srgb, var(--c) 70%, transparent) !important; background: color-mix(in srgb, var(--c) 14%, rgba(16,19,24,.9)) !important; }
+.rm-agent.on::before { opacity: 1; }
+.rm-agent b, .rm-agent strong { font-family: var(--font-body); font-weight: 600; }
+
+/* Плитки статистики, задания, лобби */
+.tile, .st-box, .stat, .q-card, .quest, .ol-card, .ol-box { border-radius: 3px !important; }
+.tile { background: var(--cs-panel) !important; border: 1px solid var(--cs-line) !important; box-shadow: none !important; }
+.tile b { font-family: var(--font-title) !important; color: #eef1f4 !important; letter-spacing: .05em; }
+.tile .ico { color: var(--cs-muted) !important; }
+.bar .ghost, header .ghost { font-size: 12px; }
+
+/* Чипы стиля агента */
+.st-rush, .st-hold, .st-long, .style-tag, .hs-style { border-radius: 2px !important; }
+
+/* ─────────── Игровой стол: кнопки и плашки ─────────── */
+.hs-end { font: 700 13px var(--font-title) !important; letter-spacing: .1em; text-transform: uppercase; color: #0b1a05 !important; text-shadow: none !important; border-radius: 3px !important;
+  background: linear-gradient(180deg, var(--cs-go-hi), var(--cs-go) 45%, var(--cs-go-dk)) !important; box-shadow: 0 0 0 1px rgba(0,0,0,.5) !important; }
+.hs-end.idle { box-shadow: 0 0 0 1px rgba(0,0,0,.5), 0 0 0 3px rgba(122,201,67,.45), 0 0 18px rgba(122,201,67,.5) !important; }
+.hs-end:disabled { background: #2a3038 !important; color: var(--cs-muted) !important; filter: none; }
+.hs-shopbtn { font: 600 10.5px var(--font-body) !important; color: #e6eaf0 !important; border-radius: 3px !important; text-shadow: none;
+  background: var(--cs-panel) !important; border: 1px solid var(--cs-line) !important; box-shadow: none !important; }
+.hs-shopbtn.can { border-color: rgba(122,201,67,.6) !important; color: var(--cs-go) !important; }
+.hs-logbtn, .hs-status, .hs-midl > * { border-radius: 3px !important; }
+.hs-top .ghost.sm { padding: 6px 10px; }
+.hs-title, button.hs-title { font-size: 12px !important; }
+.hs-top .score { font-family: var(--font-title); color: #eef1f4; text-shadow: 0 1px 2px #000; letter-spacing: .04em; }
+.fx-banner span { font-family: var(--font-title) !important; letter-spacing: .12em; text-transform: uppercase; }
+
+/* ─────────── Рамка карты: сталь вместо золота ─────────── */
+/* рамка — тёмная сталь, верхняя кромка в цвет стороны (T оранжевая, CT синяя) */
+.hc { border-radius: 6px !important; box-shadow: 0 0 0 1px #050608, 0 6px 14px rgba(0,0,0,.7) !important;
+  background: linear-gradient(var(--side-c, #8d97a4), var(--side-c, #8d97a4)) top / 100% 3px no-repeat, linear-gradient(160deg, #3a414b, #1a1e24 45%, #2b3139 100%) !important; }
+.hc.f-T { --side-c: var(--cs-t); } .hc.f-CT { --side-c: var(--cs-ct); } .hc.f-N { --side-c: #b4bcc6; }
+.hc-plate { border-radius: 4px !important; inset: 2px !important;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--tint) 22%, #161a1f), #0d1013 70%) !important;
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.06) !important; }
+.hc-full { inset: 2px !important; border-radius: 4px !important; }
+.hc-full::after { box-shadow: inset 0 0 0 1px rgba(0,0,0,.6) !important; }
+.hc-art { border-radius: 4px !important; left: 6% !important; right: 6% !important; box-shadow: 0 0 0 1px rgba(255,255,255,.08), inset 0 -10px 14px rgba(0,0,0,.6) !important;
+  background: radial-gradient(circle at 50% 40%, color-mix(in srgb, var(--tint) 30%, #1d2229), #090b0e 85%) !important; }
+.hc-ribbon { left: 0 !important; right: 0 !important; clip-path: none !important; border-radius: 0;
+  background: linear-gradient(90deg, transparent, rgba(8,10,13,.92) 12%, rgba(8,10,13,.92) 88%, transparent) !important; box-shadow: none !important; }
+.hc .hc-name { font: 600 8.5px/1.05 var(--font-title) !important; letter-spacing: .06em; text-transform: uppercase; color: #f1f3f6 !important; text-shadow: 0 1px 0 #000 !important; }
+.hc.big .hc-name { font-size: 10.5px !important; }
+.hc-type { background: #0d1013 !important; box-shadow: 0 0 0 1px rgba(255,255,255,.14) !important; color: #dfe4ea !important; }
+
+/* Камни: цена — зелёный $, атака — янтарь, здоровье — красный; плоские, с тонкой обводкой */
+.hc-cost { border-radius: 4px !important; width: 26px !important; height: 22px !important; left: -6px !important; top: -6px !important;
+  background: linear-gradient(#8bd655, #4f9a2a) !important; box-shadow: 0 0 0 1px #07090b, 0 2px 4px rgba(0,0,0,.6) !important; }
+.hc-cost::before { display: none; }
+.hc-cost i { top: 0 !important; font-family: 'Oswald', var(--font-display) !important; font-weight: 700; font-size: 13px; color: #0b1a05 !important; text-shadow: none !important; }
+.hc.big .hc-cost { width: 32px !important; height: 26px !important; }
+.hc-cost.free, .hc-cost.cheap { background: linear-gradient(#ffe08a, #d9a321) !important; }
+.hc-atk, .hu-atk, .hh-atk { background: linear-gradient(#f6c25a, #c27c16) !important; box-shadow: 0 0 0 1px #07090b, 0 2px 4px rgba(0,0,0,.6) !important;
+  clip-path: polygon(25% 3%, 75% 3%, 100% 50%, 75% 97%, 25% 97%, 0 50%); border-radius: 0 !important; }
+.hc-hp, .hu-hp, .hh-hp { background: linear-gradient(#f2666b, #b51d26) !important; box-shadow: 0 0 0 1px #07090b, 0 2px 4px rgba(0,0,0,.6) !important; }
+.hc-atk i, .hu-atk i, .hh-atk i, .hc-hp i, .hu-hp i, .hh-hp i { font-family: 'Oswald', var(--font-display) !important; font-weight: 700; }
+
+/* Бойцы на столе и герои — стальные кольца вместо золотых */
+.hu-art { box-shadow: 0 0 0 2px #5d6772, 0 0 0 3px #07090b, 0 6px 12px rgba(0,0,0,.7), inset 0 -10px 14px rgba(0,0,0,.6) !important; }
+.hu.f-T .hu-art { box-shadow: 0 0 0 2px color-mix(in srgb, var(--cs-t) 75%, #000), 0 0 0 3px #07090b, 0 6px 12px rgba(0,0,0,.7) !important; }
+.hu.f-CT .hu-art { box-shadow: 0 0 0 2px color-mix(in srgb, var(--cs-ct) 75%, #000), 0 0 0 3px #07090b, 0 6px 12px rgba(0,0,0,.7) !important; }
+.hu.ready .hu-art { box-shadow: 0 0 0 2px var(--cs-go), 0 0 0 3px #07090b, 0 0 16px 3px rgba(122,201,67,.6) !important; }
+.hu.picked .hu-art { box-shadow: 0 0 0 2px #fff, 0 0 0 3px #07090b, 0 0 18px 4px rgba(255,255,255,.55) !important; }
+.hu.tgt .hu-art { box-shadow: 0 0 0 2px #ff6b6b, 0 0 0 3px #3a0507, 0 0 18px 5px rgba(255,60,60,.7) !important; }
+.hu.bomb .hu-art, .hu.marked .hu-art { box-shadow: 0 0 0 2px #ff6b70, 0 0 0 3px #3a0507, 0 0 14px rgba(255,59,66,.6) !important; }
+.hu.vet .hu-art { box-shadow: 0 0 0 2px #f6c443, 0 0 0 3px #07090b, 0 0 10px rgba(246,196,67,.45) !important; }
+.hu.art .hu-art { border-radius: 6px !important; } .hu.art.stealth .hu-art::after { border-radius: 6px; }
+
+/* Рука — подсветка доступных карт зелёным, выбранной — белым */
+.hs-hand .hc.can { box-shadow: 0 0 0 1px #050608, 0 0 0 2.5px var(--cs-go), 0 0 12px 1px rgba(122,201,67,.5), 0 6px 14px rgba(0,0,0,.75) !important; }
+.hs-hand .hc.sel { box-shadow: 0 0 0 1px #050608, 0 0 0 2.5px #fff, 0 0 18px 3px rgba(255,255,255,.45), 0 10px 18px rgba(0,0,0,.75) !important; }
+
+/* Рамка стола и украшения — тонкая сталь вместо золотых уголков */
+.hs.has-art[class*="map-"]::after { box-shadow: inset 0 0 0 1px rgba(255,255,255,.07), inset 0 0 70px rgba(0,0,0,.75) !important; }
+.sc-corner { display: none !important; }
+.sc-emblem { background: #11151a !important; box-shadow: 0 0 0 1px rgba(255,255,255,.28), 0 0 0 2px #07090b, 0 3px 6px rgba(0,0,0,.6) !important; color: #dfe4ea !important; }
+.hs-logbtn { font: 500 11px var(--font-body) !important; color: #dfe4ea !important; background: rgba(10,12,15,.72) !important; border: 1px solid var(--cs-line); box-shadow: none !important; }
+.hs-status { font: 500 11.5px var(--font-body) !important; letter-spacing: .02em; background: rgba(10,12,15,.6) !important; }
+.hh::after { background: #12161b !important; box-shadow: 0 0 0 1px #07090b, 0 0 0 1.5px rgba(255,255,255,.14), 0 4px 8px rgba(0,0,0,.6) !important; }
+.hh-name, .hs-pwbtn b { font-family: var(--font-body) !important; font-weight: 600; }
+.hs-pwbtn small { font-family: 'Oswald', var(--font-display); color: var(--cs-go); }
+.hs-hero.p0 .hh .portrait, .hs-hero.p1 .hh .portrait { box-shadow: 0 0 0 2.5px color-mix(in srgb, var(--side) 80%, #000), 0 0 0 4px #07090b, 0 8px 16px rgba(0,0,0,.8), inset 0 -12px 16px rgba(0,0,0,.6) !important; }
+.hh.ready .portrait { box-shadow: 0 0 0 2.5px var(--cs-go), 0 0 0 4px #07090b, 0 0 18px 4px rgba(122,201,67,.6) !important; }
+.hh.tgt .portrait { box-shadow: 0 0 0 2.5px #ff6b6b, 0 0 0 4px #3a0507, 0 0 20px 5px rgba(255,60,60,.65) !important; }
+.hh.picked .portrait { box-shadow: 0 0 0 2.5px #fff, 0 0 0 4px #07090b, 0 0 20px 5px rgba(255,255,255,.5) !important; }
+.hs-pwbtn .pw-gem { box-shadow: 0 0 0 2px #8d97a4, 0 0 0 3.5px #07090b, 0 5px 10px rgba(0,0,0,.7), inset 0 -6px 10px rgba(0,0,0,.55) !important; }
+.hs-pwbtn.can .pw-gem { box-shadow: 0 0 0 2px var(--cs-go), 0 0 0 3.5px #07090b, 0 0 16px 4px rgba(122,201,67,.55) !important; }
+.hs-pwbtn.picked .pw-gem { box-shadow: 0 0 0 2px #fff, 0 0 0 3.5px #07090b, 0 0 18px 5px rgba(255,255,255,.5) !important; }
+.hs-pips i.on { background: var(--cs-go) !important; box-shadow: 0 0 0 1px #07090b, 0 0 5px rgba(122,201,67,.6) !important; }
+.hs-pips i { border-radius: 1px !important; }
+.hc .hc-name { letter-spacing: .03em; }
+/* Имена на картах — одной строкой, без переноса по дефису */
+.hc .hc-name { font-size: 7.6px !important; letter-spacing: .02em; hyphens: none; word-break: keep-all; overflow-wrap: normal; line-height: 1.05; }
+.hc.big .hc-name { font-size: 10px !important; }
+/* Зона розыгрыша — зелёная, как «можно» в CS2 */
+.hs.has-art[class*="map-"] .hs-board.zone::before, .hs.has-art[class*="map-"] .hs-board.placing::before {
+  background: radial-gradient(ellipse at 50% 50%, rgba(122,201,67,.14), rgba(0,0,0,.28) 80%) !important;
+  box-shadow: 0 0 0 1px rgba(0,0,0,.55), 0 0 0 2px rgba(122,201,67,.75), 0 0 22px rgba(122,201,67,.3), inset 0 0 26px rgba(0,0,0,.45) !important; border-radius: 6px !important; }
+.hs.has-art[class*="map-"] .hs-board.b1.zone::before { border-radius: 6px !important; }
+.hs-slot { border-radius: 3px !important; }
+.hs-dropmark { background: var(--cs-go) !important; box-shadow: 0 0 10px var(--cs-go) !important; }
+.hs-ghost.ok { box-shadow: 0 10px 24px rgba(0,0,0,.75), 0 0 0 2px var(--cs-go), 0 0 16px var(--cs-go) !important; }
+.hc .hc-name { padding: 0 3px !important; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
