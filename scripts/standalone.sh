@@ -18,14 +18,19 @@ vo = {str(f.relative_to(vo_dir)).replace('\\', '/'): f'data:{MIME[f.suffix.lower
 shot_dir = pathlib.Path('public/snd/shot')
 shot = {f.name: f'data:{MIME[f.suffix.lower()]};base64,' + base64.b64encode(f.read_bytes()).decode()
         for f in sorted(shot_dir.glob('*')) if f.suffix.lower() in MIME} if shot_dir.exists() else {}
-pre = '<script>window.__CARD_IMG=' + json.dumps(imgs) + ';window.__VO=' + json.dumps(vo) + ';window.__SHOT=' + json.dumps(shot) + '</script>'
+# Картинки нужны сразу. Голоса и выстрелы — JSON-блоки в конце файла: браузер их не выполняет как скрипт,
+# а разбирает только при первом обращении (в начале партии), поэтому меню открывается быстрее.
+lazy = '''Object.defineProperty(window,'__%s',{configurable:true,get(){var e=document.getElementById('__%s');var v=e?JSON.parse(e.textContent):undefined;Object.defineProperty(window,'__%s',{value:v});return v}});'''
+pre = '<script>window.__CARD_IMG=' + json.dumps(imgs) + ';' + lazy % ('VO', 'vo', 'VO') + lazy % ('SHOT', 'shot', 'SHOT') + '</script>'
+post = '<script type="application/json" id="__vo">' + json.dumps(vo).replace('</', '<\\/') + '</script><script type="application/json" id="__shot">' + json.dumps(shot).replace('</', '<\\/') + '</script>'
 html = pathlib.Path('index.html').read_text()
-html = html.replace('<script type="module" src="/src/main.ts"></script>', pre + '<script type="module">' + js.replace('</script', '<\\/script') + '</script>')
+html = html.replace('<script type="module" src="/src/main.ts"></script>', pre + '<script type="module">' + js.replace('</script', '<\\/script') + '</script>' + post)
 html = html.replace('</head>', '<style>' + css + '</style>\n</head>')
 pathlib.Path('dist-standalone.html').write_text(html)
 print('ok', len(html))
 # Вариант для публикации артефактом (без обёртки html/head и без SDK Telegram)
-fonts = '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&family=Oswald:wght@500;600;700&family=Russo+One&family=Yeseva+One&display=swap">'
-art = '<title>Клатч</title>\n' + fonts + '\n<style>' + css + '</style>\n<div id="app"></div>\n' + pre + '\n<script type="module">' + js.replace('</script', '<\\/script') + '</script>\n'
+fonts = '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&family=Oswald:wght@500;600;700&display=swap">'
+boot = re.search(r'<style>\s*html, body.*?</small></div></div>', html, re.S).group(0)
+art = '<meta charset="utf-8">\n<title>Клатч</title>\n' + fonts + '\n<style>' + css + '</style>\n' + boot + '\n' + pre + '\n<script type="module">' + js.replace('</script', '<\\/script') + '</script>\n' + post + '\n'
 pathlib.Path('.standalone/artifact.html').write_text(art)
 PY

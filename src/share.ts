@@ -25,14 +25,14 @@ export async function renderCard(s: ShareInfo): Promise<Blob | null> {
   const accent = s.win ? '#7ed957' : '#e0343a', sideC = s.side === 'T' ? '#e8b04a' : '#5aa8e8';
   g.fillStyle = accent; g.fillRect(0, 0, W, 14);
   g.textAlign = 'center';
-  g.fillStyle = '#f2c14e'; g.font = '700 54px "Russo One", Impact, sans-serif'; g.fillText('КЛАТЧ', W / 2, 110);
+  g.fillStyle = '#f2c14e'; g.font = '700 54px Oswald, Impact, sans-serif'; g.fillText('КЛАТЧ', W / 2, 110);
   g.fillStyle = '#c9ced6'; g.font = '600 30px Onest, Arial, sans-serif'; g.fillText(s.mode, W / 2, 158);
   if (ag) {
     g.save(); g.beginPath(); g.arc(W / 2, 400, 170, 0, Math.PI * 2); g.closePath(); g.fillStyle = '#1b1f27'; g.fill(); g.clip();
     const k = Math.max(340 / ag.width, 340 / ag.height); g.drawImage(ag, W / 2 - (ag.width * k) / 2, 400 - (ag.height * k) / 2, ag.width * k, ag.height * k); g.restore();
     g.lineWidth = 10; g.strokeStyle = sideC; g.beginPath(); g.arc(W / 2, 400, 172, 0, Math.PI * 2); g.stroke();
   }
-  g.fillStyle = accent; g.font = '700 120px "Russo One", Impact, sans-serif'; g.fillText(s.title, W / 2, 720);
+  g.fillStyle = accent; g.font = '700 120px Oswald, Impact, sans-serif'; g.fillText(s.title, W / 2, 720);
   g.fillStyle = '#e9ecf1'; g.font = '600 40px Onest, Arial, sans-serif'; g.fillText(s.subtitle, W / 2, 785);
   g.fillStyle = '#aab1bc'; g.font = '500 34px Onest, Arial, sans-serif'; g.fillText(`${s.agentName} · ${s.side} · ${s.map}`, W / 2, 845);
   if (s.rating) {
