@@ -1,9 +1,12 @@
 // Анонимная аналитика: какие шаги проходят игроки, без имён и Telegram-ID.
 // События копятся в очереди и раз в 15 секунд (и при сворачивании) уходят пачкой на ENDPOINT.
-// Пустой ENDPOINT — аналитика выключена. Сервер-сборщик: scripts/analytics_server.py.
+// Собирает сам сервер онлайна (POST /e, отчёт — GET /stats?key=…), поэтому адрес по умолчанию берётся из адреса онлайна:
+// wss://host/clutch-ws → https://host/clutch-ws/e (та же location в nginx). Нет сервера онлайна и не задан window.CLUTCH_ANALYTICS — аналитика выключена.
+import { serverUrl } from './online/client';
 
-/** Адрес сборщика. Например: 'https://cs2assist.ru/clutch-stats/e'. Можно задать и через window.CLUTCH_ANALYTICS. */
-const ENDPOINT: string = (globalThis as { CLUTCH_ANALYTICS?: string }).CLUTCH_ANALYTICS ?? '';
+/** Адрес сборщика. Можно задать явно через window.CLUTCH_ANALYTICS. */
+const ENDPOINT: string = (globalThis as { CLUTCH_ANALYTICS?: string }).CLUTCH_ANALYTICS
+  ?? (() => { const ws = serverUrl(); return ws ? ws.replace(/^ws/, 'http').replace(/\/$/, '') + '/e' : ''; })();
 const VERSION = '1';
 
 interface Ev { t: number; e: string; p?: Record<string, string | number | boolean> }
@@ -50,5 +53,9 @@ function flush() {
 }
 
 setInterval(flush, 15000);
+// Ошибки скриптов — чтобы видеть, что ломается у игроков (только текст ошибки, без данных игрока)
+let errCount = 0;
+addEventListener('error', (e) => { if (errCount++ < 5) track('js_error', { msg: String(e.message).slice(0, 140), at: `${String(e.filename).split('/').pop()}:${e.lineno}` }); });
+addEventListener('unhandledrejection', (e) => { if (errCount++ < 5) track('js_error', { msg: String((e.reason as Error)?.message ?? e.reason).slice(0, 140), at: 'promise' }); });
 addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flush(); });
 addEventListener('pagehide', flush);

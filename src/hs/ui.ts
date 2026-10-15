@@ -92,7 +92,7 @@ function startMatch() {
   S.on = null;
   S.score = [0, 0]; S.game = 1; S.results = [];
   S.journal = [];
-  track('hs_start', { diff: S.setup.diff, side: S.side, ct: S.setup.CT, t: S.setup.T });
+  track('hs_start', { diff: S.setup.diff, side: S.side, ct: S.setup.CT, t: S.setup.T, tut: !!S.tut });
   newRound();
 }
 function newRound() {
@@ -541,7 +541,7 @@ async function finishGame() {
     s.reason === 'bomb' ? 'Бомба взорвалась' : s.reason === 'defuse' ? 'Бомба обезврежена' : win ? 'Вы выиграли игру' : 'Соперник выиграл игру', wSide, 2400);
   recordRound(S.setup[mySide()], win, s.p[0].kills);
   questsAtEnd(win, S.setup[mySide()], s.p[0].kills, false);
-  track('hs_game', { game: S.game, win, reason: s.reason, side: mySide(), turns: s.p[0].turns, agent: S.setup[mySide()], bot: S.botAgent, diff: S.setup.diff });
+  track('hs_game', { game: S.game, win, reason: s.reason, side: mySide(), turns: s.p[0].turns, agent: S.setup[mySide()], bot: S.botAgent, diff: S.setup.diff, map: S.map, tut: !!S.tut });
   const done = true;   // против бота — одна партия: сторону заранее решил ножевой раунд
   if (S.tut) { markTutorialDone(); S.tut.over = true; }
   S.phase = done ? 'over' : 'gameover';
@@ -835,7 +835,7 @@ export function hsClick(a: string, el: HTMLElement): boolean {
     case 'hs-menu': S.s = null; S.tut = null; if (S.on && S.phase !== 'over') net.send({ t: 'resign' }); S.on = null; hooks.menu(); return true;
     case 'hs-cardinfo': S.info = S.info === el.dataset.v ? null : el.dataset.v!; break;
     case 'hs-closeinfo': S.info = null; break;
-    case 'hs-pvmore': S.pvMore = !S.pvMore; break;
+    case 'hs-pvmore': S.pvMore = !S.pvMore; if (S.pvMore) track('pv_more'); break;
     case 'hs-help': S.help = true; break;
     case 'hs-closehelp': S.help = false; break;
     case 'hs-fullrules': S.help = false; S.phase = 'rules'; break;
@@ -889,7 +889,7 @@ export function hsClick(a: string, el: HTMLElement): boolean {
     case 'hs-end': void playerEndTurn(); return true;
     case 'hs-again': if (S.on) { S.on = null; S.s = null; openLobby(); return true; } hsOpen(); return true;
     case 'hs-lobby': S.on = null; S.s = null; openLobby(); return true;
-    case 'hs-queue': S.lobby.err = ''; if (net.send({ t: 'queue', agents: { T: S.setup.T, CT: S.setup.CT } })) { S.lobby.queued = true; sfx.click(); } else S.lobby.err = 'Нет связи с сервером'; break;
+    case 'hs-queue': S.lobby.err = ''; if (net.send({ t: 'queue', agents: { T: S.setup.T, CT: S.setup.CT } })) { S.lobby.queued = true; queuedAt = Date.now(); track('online_queue', { elo: S.lobby.me?.rating ?? 0 }); sfx.click(); } else S.lobby.err = 'Нет связи с сервером'; break;
     case 'hs-agents': S.lobby.agentsOpen = !S.lobby.agentsOpen; break;
     case 'hs-unqueue': net.send({ t: 'unqueue' }); S.lobby.queued = false; S.lobby.range = null; break;
     case 'hs-duel-create': S.lobby.err = ''; S.lobby.copied = false; if (!net.send({ t: 'duel_create', agents: { T: S.setup.T, CT: S.setup.CT } })) S.lobby.err = 'Нет связи с сервером'; break;
@@ -903,10 +903,10 @@ export function hsClick(a: string, el: HTMLElement): boolean {
     case 'hs-top': S.phase = 'top'; net.send({ t: 'top' }); break;
     case 'hs-player': if (el.dataset.id) { if (S.phase !== 'player') S.lobby.playerFrom = S.phase; S.lobby.player = null; S.phase = 'player'; net.send({ t: 'player', id: el.dataset.id }); } break;
     case 'hs-player-back': S.phase = S.lobby.playerFrom === 'player' ? 'rating' : S.lobby.playerFrom; S.lobby.player = null; if (S.phase === 'rating') net.send({ t: 'friends' }); break;
-    case 'hs-friend-add': net.send({ t: 'friend_add', id: el.dataset.id! }); { const pl = S.lobby.player; if (pl && pl.me.id === el.dataset.id) pl.friend = true; } sfx.click(); break;
+    case 'hs-friend-add': track('friend_add'); net.send({ t: 'friend_add', id: el.dataset.id! }); { const pl = S.lobby.player; if (pl && pl.me.id === el.dataset.id) pl.friend = true; } sfx.click(); break;
     case 'hs-friend-del': net.send({ t: 'friend_del', id: el.dataset.id! }); { const pl = S.lobby.player; if (pl && pl.me.id === el.dataset.id) pl.friend = false; } break;
-    case 'hs-invite': S.lobby.err = ''; if (!net.send({ t: 'invite', id: el.dataset.id!, agents: { T: S.setup.T, CT: S.setup.CT } })) S.lobby.err = 'Нет связи с сервером'; sfx.click(); break;
-    case 'hs-rematch': if (S.lobby.rematch !== 'gone') { net.send({ t: 'rematch', agents: { T: S.setup.T, CT: S.setup.CT } }); sfx.click(); } break;
+    case 'hs-invite': track('invite_send'); S.lobby.err = ''; if (!net.send({ t: 'invite', id: el.dataset.id!, agents: { T: S.setup.T, CT: S.setup.CT } })) S.lobby.err = 'Нет связи с сервером'; sfx.click(); break;
+    case 'hs-rematch': if (S.lobby.rematch !== 'gone') { track('rematch', { st: S.lobby.rematch || 'ask' }); net.send({ t: 'rematch', agents: { T: S.setup.T, CT: S.setup.CT } }); sfx.click(); } break;
     case 'hs-rating': openLobby('rating'); return true;
     case 'hs-findmatch': openLobby('lobby'); return true;
     case 'hs-ban': if (S.on?.veto?.myTurn) { net.send({ t: 'ban', map: el.dataset.v! }); sfx.click(); } break;
@@ -1400,6 +1400,7 @@ if (location.hash.includes('fxtest')) (window as unknown as { __fx: typeof fx; _
 // где мы всегда игрок 0. Шаги проигрываются строго по очереди теми же анимациями, что и игра с ботом.
 const ANN_PICK = new Set(['ancient', 'dust2', 'inferno', 'mirage', 'nuke']);   // для этих карт у диктора есть фраза
 let netQueue: Promise<void> = Promise.resolve();
+let queuedAt = 0;
 let netReady = false;
 
 function netInit() {
@@ -1417,6 +1418,7 @@ let menuTried = false;
 export { levelBadge as hsLevelBadge, levelProgress as hsLevelProgress };
 function openLobby(page: 'lobby' | 'rating' = 'lobby') {
   S.phase = page; S.s = null; S.on = null; S.info = null; S.lobby.err = '';
+  track(page === 'rating' ? 'rating_open' : 'online_open', { srv: !!net.serverUrl() });
   netInit();
   if (!net.connect()) S.lobby.err = 'Сервер онлайна не настроен (константа SERVER в src/online/client.ts).';
   else if (page === 'rating') { net.send({ t: 'profile' }); net.send({ t: 'top' }); net.send({ t: 'friends' }); }
@@ -1457,6 +1459,7 @@ async function onNet(m: S2C) {
     case 'err': L.err = m.msg; L.queued = false; if (S.phase !== 'lobby') fx.banner(m.msg, 'info', 1400); break;
     case 'top': L.top = m.rows; L.season = m.season; L.prizes = m.prizes; break;
     case 'found':
+      track('online_found', { ranked: m.ranked, wait: m.ranked && queuedAt ? Math.round((Date.now() - queuedAt) / 1000) : 0, diff: L.me ? m.opp.rating - L.me.rating : 0 }); queuedAt = 0;
       L.queued = false; L.duel = null; L.err = ''; L.invite = null; L.invNote = ''; L.rematch = '';
       S.on = { ranked: m.ranked, opp: m.opp, side: 'T', myAgent: '', oppAgent: '', deadline: 0, oppOnline: true, mullSent: false, confirmResign: false };
       S.score = [0, 0]; S.game = 1; S.results = []; S.journal = []; S.s = null;
@@ -1592,7 +1595,7 @@ async function finishOnline(m: Extract<S2C, { t: 'over' }>) {
     recordRound(S.on.myAgent, win, S.s.p[0].kills);
     questsAtEnd(win, S.on.myAgent, S.s.p[0].kills, true);
   }
-  track('online_end', { ranked: m.ranked, win, reason: m.reason });
+  track('online_end', { ranked: m.ranked, win, reason: m.reason, side: mySide(), agent: S.on.myAgent, opp: S.on.oppAgent, map: S.map, turns: S.s?.p[0].turns ?? 0, delta: m.rating ? m.rating.after - m.rating.before : 0 });
   S.phase = 'over'; S.busy = false; S.sel = null;
 }
 const REASON_RU: Record<string, (win: boolean) => string> = {
@@ -1844,6 +1847,7 @@ export function hsInvite(accept: boolean) {
   const v = S.lobby.invite;
   if (!v) return;
   S.lobby.invite = null;
+  track('invite_answer', { accept });
   if (accept) { hooks.enter(); openLobby(); }
   net.send({ t: 'invite_answer', code: v.code, accept, agents: { T: S.setup.T, CT: S.setup.CT } });
   hooks.render();
@@ -1966,6 +1970,7 @@ type TutState = { step: number; over: boolean; next: boolean; free: boolean };
 
 function startTutorial() {
   S.tut = { step: 0, over: false, next: false, free: false };
+  track('tut_start');
   S.setup = { ...S.setup, side: 'T', T: 't_phoenix', CT: 'ct_swat', diff: 'easy' };
   S.side = 'T'; S.knife = null;
   startMatch();
@@ -2062,7 +2067,8 @@ const tutStep = () => (S.tut && !S.tut.free ? TUT_STEPS[S.tut.step] : undefined)
 function tutAdvance() {
   const t = S.tut!;
   t.step++; t.next = false; S.sel = null; resetPend();
-  if (t.step >= TUT_STEPS.length) t.free = true;
+  track('tut_step', { n: t.step, id: TUT_STEPS[t.step - 1]?.id ?? '' });
+  if (t.step >= TUT_STEPS.length) { t.free = true; track('tut_done'); }
 }
 /** Выполненные шаги засчитываются, невозможные в ваш ход — пропускаются. */
 function tutCheck() {
@@ -2125,7 +2131,7 @@ function tutLoop() {
   bub.addEventListener('click', (ev) => {
     const a = (ev.target as HTMLElement).dataset.act;
     if (a === 'hs-tutnext' && S.tut) { S.tut.next = true; tutCheck(); }
-    if (a === 'hs-tutskip' && S.tut) { S.tut.free = true; clearHl(); hooks.render(); }
+    if (a === 'hs-tutskip' && S.tut) { track('tut_skip', { n: S.tut.step, id: TUT_STEPS[S.tut.step]?.id ?? '' }); S.tut.free = true; clearHl(); hooks.render(); }
   });
   const frame = () => {
     if (!S.tut) { shade.remove(); ring.remove(); bub.remove(); clearHl(); return; }

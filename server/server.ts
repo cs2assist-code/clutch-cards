@@ -11,12 +11,15 @@
 //   BOT_TOKEN=...         токен бота — для проверки подписи Telegram initData (обязательно в бою)
 //   ALLOW_DEV=1           пускать без Telegram по имени (для локальной проверки; по умолчанию — только без BOT_TOKEN)
 //   DB=clutch-online.sqlite
+//   STATS_KEY=...         пароль страницы аналитики: https://<домен>/clutch-ws/stats?key=… (события шлёт игра на …/clutch-ws/e)
+//   PRIZES=server/prizes.json   призы сезона (пример — server/prizes.example.json)
 //   TURN_SEC=30 MULL_SEC=30 BAN_SEC=15 GRACE_SEC=60 KNIFE_SEC=12 SIDE_SEC=15
 // Новый сезон: bun server/server.ts --new-season "Сезон 2"   (рейтинг сжимается к 1000 наполовину, счёт игр — с нуля)
 import { Database } from 'bun:sqlite';
 import type { ServerWebSocket } from 'bun';
 import { createHmac, randomInt } from 'node:crypto';
 import { readFileSync, statSync } from 'node:fs';
+import { corsPreflight, initAnalytics, statsCsv, statsPage } from './analytics';
 import { AGENTS, MAPS } from '../src/game/cards';
 import type { Side } from '../src/game/types';
 import { choose, endTurn, mulligan, newGame, setRng, startGame, type HState, type PI } from '../src/hs/engine';
@@ -563,6 +566,8 @@ function onMessage(ws: WS, m: C2S) {
 const RADIO = new Set(['go', 'enemyspotted', 'needbackup', 'takingfire', 'niceshot', 'clutch', 'enemydown']);
 
 // ─────────────────────────── HTTP + WebSocket ───────────────────────────
+const STATS_KEY = env.STATS_KEY ?? '';
+const analytics = initAnalytics(db);
 const server = Bun.serve<Conn, undefined>({
   port: PORT,
   fetch(req, srv) {
@@ -570,6 +575,18 @@ const server = Bun.serve<Conn, undefined>({
     if (url.pathname.endsWith('/ws')) {
       if (srv.upgrade(req, { data: { msgs: [], lastRadio: 0 } })) return undefined;
       return new Response('upgrade failed', { status: 400 });
+    }
+    if (req.method === 'OPTIONS') return corsPreflight();
+    if (req.method === 'POST' && url.pathname.endsWith('/e')) {
+      const ip = req.headers.get('x-real-ip') ?? req.headers.get('x-forwarded-for')?.split(',')[0].trim() ?? srv.requestIP(req)?.address ?? '?';
+      return analytics.collect(req, ip);
+    }
+    if (url.pathname.endsWith('/stats')) {
+      const key = url.searchParams.get('key') ?? '';
+      if (!STATS_KEY || key !== STATS_KEY) return new Response('Нужен ?key= (переменная STATS_KEY на сервере)', { status: 403, headers: { 'content-type': 'text/plain; charset=utf-8' } });
+      if (url.searchParams.get('csv')) return new Response(statsCsv(db), { headers: { 'content-type': 'text/csv; charset=utf-8', 'content-disposition': 'attachment; filename="clutch-events.csv"' } });
+      const days = Math.max(1, Math.min(120, Number(url.searchParams.get('days')) || 30));
+      return new Response(statsPage(db, days).replace('__KEY__', encodeURIComponent(key)), { headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' } });
     }
     if (url.pathname.endsWith('/health')) return Response.json({ ok: true, online: online.size, queue: queue.length, rooms: new Set(roomOf.values()).size });
     return new Response('Клатч: сервер онлайна. WebSocket — /ws', { headers: { 'content-type': 'text/plain; charset=utf-8' } });

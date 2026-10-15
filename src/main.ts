@@ -188,5 +188,5 @@ if (duel) { ui.screen = 'hs'; setBackButton(() => go('menu')); hsJoinDuel(duel);
 void Promise.all([loadStats(), loadQuests()]).then(() => {
   render();
   const tg = (window as unknown as { Telegram?: { WebApp?: { initData?: string; platform?: string } } }).Telegram?.WebApp;
-  track('app_open', { tg: !!tg?.initData, pf: tg?.platform ?? 'web', w: innerWidth, h: innerHeight, games: stats.games });
+  track('app_open', { tg: !!tg?.initData, pf: tg?.platform ?? 'web', w: innerWidth, h: innerHeight, games: stats.games, ms: Math.round(performance.now()) });
 });
