@@ -22,7 +22,7 @@ import { choose, endTurn, mulligan, newGame, setRng, startGame, type HState, typ
 import { apply } from '../src/hs/ai';
 import { isMove, knifeFor, MOVES, newKnife, resolveKnife, type KnifeRound, type KnifeState, type Move } from '../src/hs/knife';
 import {
-  type HistRow, HIDDEN, leagueOf, levelOf, MIN_RATING, rotateAction, rotateEv, unrotateAction, validAction, viewFor,
+  type HistRow, type PeerRow, HIDDEN, leagueOf, levelOf, MIN_RATING, rotateAction, rotateEv, unrotateAction, validAction, viewFor,
   type Agents, type C2S, type PlayerInfo, type S2C, type StepAction,
 } from '../src/online/protocol';
 
@@ -37,6 +37,7 @@ const KNIFE_MS = Number(env.KNIFE_SEC ?? 12) * 1000;   // на приём в н�
 const SIDE_MS = Number(env.SIDE_SEC ?? 15) * 1000;     // победителю ножей — на выбор стороны
 const GRACE_MS = Number(env.GRACE_SEC ?? 60) * 1000;
 const START_RATING = 1000;
+const LEAVE_PENALTY = Number(env.LEAVE_PENALTY ?? 35);
 
 // Случайность сервера — криптографическая: клиент не может её предсказать
 setRng(() => randomInt(0, 2 ** 31) / 2 ** 31);
@@ -50,7 +51,9 @@ CREATE TABLE IF NOT EXISTS players (id TEXT PRIMARY KEY, name TEXT NOT NULL, rat
 CREATE TABLE IF NOT EXISTS matches (id INTEGER PRIMARY KEY, at INTEGER NOT NULL, ranked INTEGER NOT NULL, season INTEGER NOT NULL,
   a TEXT NOT NULL, b TEXT NOT NULL, winner TEXT, reason TEXT, map TEXT, turns INTEGER,
   ra_before REAL, rb_before REAL, ra_after REAL, rb_after REAL);
-CREATE INDEX IF NOT EXISTS players_top ON players (season, rating DESC);`);
+CREATE INDEX IF NOT EXISTS players_top ON players (season, rating DESC);
+CREATE TABLE IF NOT EXISTS friends (a TEXT NOT NULL, b TEXT NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (a, b));
+CREATE INDEX IF NOT EXISTS matches_a ON matches (a, id); CREATE INDEX IF NOT EXISTS matches_b ON matches (b, id);`);
 
 function currentSeason(): { id: number; name: string } {
   let row = db.query('SELECT id, name FROM seasons ORDER BY id DESC LIMIT 1').get() as { id: number; name: string } | null;
@@ -89,7 +92,7 @@ function history(id: string): HistRow[] {
   return rows.map((m) => {
     const me = m.a === id;
     const before = me ? m.ra_before : m.rb_before, after = me ? m.ra_after : m.rb_after;
-    return { at: m.at, win: m.winner === id, delta: Math.round(after) - Math.round(before), after: Math.round(after), opp: (me ? m.bn : m.an) ?? '?', oppRating: Math.round(me ? m.rb_before : m.ra_before), map: m.map, reason: m.reason };
+    return { at: m.at, win: m.winner === id, delta: Math.round(after) - Math.round(before), after: Math.round(after), opp: (me ? m.bn : m.an) ?? '?', oppId: me ? m.b : m.a, oppRating: Math.round(me ? m.rb_before : m.ra_before), map: m.map, reason: m.reason };
   });
 }
 
@@ -151,10 +154,40 @@ function createRoom(a: Omit<Seat, 'mullDone'>, b: Omit<Seat, 'mullDone'>, ranked
   for (const st of r.seats) roomOf.set(st.id, r);
   for (const p of [0, 1] as PI[]) {
     const o = r.seats[other(p)];
-    send(r.seats[p].ws, { t: 'found', ranked, opp: { name: o.name, rating: Math.round(o.rating), league: leagueOf(o.rating).name } });
+    send(r.seats[p].ws, { t: 'found', ranked, opp: { id: o.id, name: o.name, rating: Math.round(o.rating), league: leagueOf(o.rating).name } });
   }
   knifeRound(r);
 }
+
+// ── Друзья, недавние соперники, профиль игрока ──
+const isFriend = (a: string, b: string) => !!db.query('SELECT 1 FROM friends WHERE a = ? AND b = ?').get(a, b);
+function peer(id: string, me: string, extra: Partial<PeerRow> = {}): PeerRow | null {
+  const p = db.query('SELECT * FROM players WHERE id = ?').get(id) as PlayerRow | null;
+  if (!p) return null;
+  return { id, name: p.name, rating: Math.round(p.rating), games: p.games, online: online.has(id), inGame: roomOf.has(id), friend: isFriend(me, id), ...extra };
+}
+function friendsMsg(id: string): S2C {
+  const fr = (db.query('SELECT b FROM friends WHERE a = ? ORDER BY at DESC LIMIT 100').all(id) as { b: string }[]).map((x) => peer(x.b, id)).filter(Boolean) as PeerRow[];
+  fr.sort((x, y) => Number(y.online) - Number(x.online) || y.rating - x.rating);
+  const seen = new Set<string>(), recent: PeerRow[] = [];
+  for (const m of db.query('SELECT a, b, winner, at FROM matches WHERE a = ? OR b = ? ORDER BY id DESC LIMIT 60').all(id, id) as { a: string; b: string; winner: string; at: number }[]) {
+    const o = m.a === id ? m.b : m.a;
+    if (seen.has(o)) continue; seen.add(o);
+    const r = peer(o, id, { at: m.at, win: m.winner === id }); if (r) recent.push(r);
+    if (recent.length >= 15) break;
+  }
+  return { t: 'friends', friends: fr, recent };
+}
+function playerMsg(id: string, me: string): S2C | null {
+  const p = db.query('SELECT * FROM players WHERE id = ?').get(id) as PlayerRow | null;
+  if (!p) return null;
+  const h = db.query('SELECT SUM(winner = ?) AS w, SUM(winner != ?) AS l FROM matches WHERE (a = ? AND b = ?) OR (a = ? AND b = ?)').get(me, me, me, id, id, me) as { w: number | null; l: number | null };
+  return { t: 'player', me: info(p), history: history(id).slice(0, 8), h2h: { wins: h.w ?? 0, losses: h.l ?? 0 }, online: online.has(id), friend: isFriend(me, id) };
+}
+/** Вызовы на дуэль: код → кто кого позвал. Живут 60 с. */
+const invites = new Map<string, { from: string; to: string; at: number }>();
+/** Реванш: после матча игрок → соперник и его согласие. */
+const rematch = new Map<string, { opp: string; agents?: Agents; at: number }>();
 
 // ── Ножевой раунд: «Нож · Щит · Zeus» (src/hs/knife.ts). Победитель выбирает сторону, проигравший первым банит карту ──
 function knifeMsg(r: Room, p: PI, reveal?: KnifeRound): S2C {
@@ -301,6 +334,8 @@ function finish(r: Room, winner: PI, reason: string) {
     const d = Math.max(5, Math.min(45, Math.round(K * Math.abs(sa - ea))));   // всегда от 5 до 45 очков
     na = Math.max(MIN_RATING, ra + (sa ? d : -d));
     nb = Math.max(MIN_RATING, rb + (sa ? -d : d));
+    // Вышел из матча и не вернулся — фиксированный штраф ${LEAVE_PENALTY} Elo (без бана поиска)
+    if (reason === 'leave') { if (sa) nb = Math.max(MIN_RATING, rb - LEAVE_PENALTY); else na = Math.max(MIN_RATING, ra - LEAVE_PENALTY); }
     const upd = db.prepare('UPDATE players SET rating = ?, games = games + 1, wins = wins + ?, peak = MAX(peak, ?), updated = ? WHERE id = ?');
     upd.run(na, winner === 0 ? 1 : 0, na, Date.now(), A.id);
     upd.run(nb, winner === 1 ? 1 : 0, nb, Date.now(), B.id);
@@ -311,6 +346,7 @@ function finish(r: Room, winner: PI, reason: string) {
     const before = p === 0 ? ra : rb, after = p === 0 ? na : nb;
     send(r.seats[p].ws, { t: 'over', winner: winner === p ? 0 : 1, reason, ranked: r.ranked, rating: r.ranked ? { before: Math.round(before), after: Math.round(after), league: leagueOf(after).name } : undefined });
     roomOf.delete(r.seats[p].id);
+    rematch.set(r.seats[p].id, { opp: r.seats[other(p)].id, at: Date.now() });
     const ws = r.seats[p].ws;
     if (ws?.data.user) send(ws, { t: 'me', me: info(loadPlayer(ws.data.user.id, ws.data.user.name)), season: currentSeason().name });
   }
@@ -333,6 +369,8 @@ setInterval(() => {
   }
   for (const q of queue) { const w = windowOf(q, now); send(online.get(q.id), { t: 'queued', size: queue.length, lo: Math.max(MIN_RATING, Math.round(q.rating - w)), hi: Math.round(q.rating + w), since: q.since }); }
   for (const [code, d] of duels) if (now - d.at > 15 * 60_000) duels.delete(code);
+  for (const [code, v] of invites) if (now - v.at > 60_000) { invites.delete(code); duels.delete(code); send(online.get(v.from), { t: 'invite_status', state: 'expired', name: (db.query('SELECT name FROM players WHERE id = ?').get(v.to) as { name: string } | null)?.name ?? '' }); }
+  for (const [id, v] of rematch) if (now - v.at > 120_000) rematch.delete(id);
 }, 1000);
 
 const leaveQueue = (id: string) => { const i = queue.findIndex((q) => q.id === id); if (i >= 0) queue.splice(i, 1); };
@@ -357,7 +395,7 @@ function onReconnect(ws: WS, r: Room) {
   st.ws = ws;
   send(r.seats[other(p)].ws, { t: 'opp_status', online: true });
   const o = r.seats[other(p)];
-  send(ws, { t: 'found', ranked: r.ranked, opp: { name: o.name, rating: Math.round(o.rating), league: leagueOf(o.rating).name } });
+  send(ws, { t: 'found', ranked: r.ranked, opp: { id: o.id, name: o.name, rating: Math.round(o.rating), league: leagueOf(o.rating).name } });
   if (r.phase === 'knife' || r.phase === 'side') send(ws, knifeMsg(r, p, r.knife.rounds[r.knife.rounds.length - 1]));
   else if (r.phase === 'veto') send(ws, vetoMsg(r, p));
   else send(ws, { t: 'sync', phase: r.phase === 'mull' ? 'mull' : 'play', view: viewFor(r.s!, p), deadline: r.deadline, map: r.map, side: r.sides[p], myAgent: r.agents[p], oppAgent: r.agents[other(p)], mullDone: st.mullDone });
@@ -401,6 +439,53 @@ function onMessage(ws: WS, m: C2S) {
       return send(ws, { t: 'queued', size: queue.length, lo: Math.max(MIN_RATING, Math.round(p.rating - MM_BASE)), hi: Math.round(p.rating + MM_BASE), since });
     }
     case 'unqueue': leaveQueue(u.id); return;
+    case 'friends': return send(ws, friendsMsg(u.id));
+    case 'friend_add': {
+      const id = String(m.id ?? '');
+      if (id && id !== u.id && db.query('SELECT 1 FROM players WHERE id = ?').get(id)) db.run('INSERT OR IGNORE INTO friends (a, b, at) VALUES (?, ?, ?)', [u.id, id, Date.now()]);
+      return send(ws, friendsMsg(u.id));
+    }
+    case 'friend_del': db.run('DELETE FROM friends WHERE a = ? AND b = ?', [u.id, String(m.id ?? '')]); return send(ws, friendsMsg(u.id));
+    case 'player': { const msg = playerMsg(String(m.id ?? ''), u.id); return msg ? send(ws, msg) : send(ws, { t: 'err', msg: 'Игрок не найден' }); }
+    case 'invite': {
+      const agents = validAgents(m.agents), to = String(m.id ?? '');
+      const target = db.query('SELECT name FROM players WHERE id = ?').get(to) as { name: string } | null;
+      if (!agents || !target || to === u.id) return send(ws, { t: 'err', msg: 'Нельзя вызвать этого игрока' });
+      if (r) return send(ws, { t: 'err', msg: 'Вы уже в игре' });
+      const tws = online.get(to);
+      if (!tws) return send(ws, { t: 'invite_status', state: 'offline', name: target.name });
+      if (roomOf.has(to)) return send(ws, { t: 'invite_status', state: 'busy', name: target.name });
+      for (const [code, d] of duels) if (d.host.id === u.id) duels.delete(code);
+      const p = loadPlayer(u.id, u.name), code = duelCode();
+      duels.set(code, { host: { id: u.id, name: u.name, rating: p.rating, games: p.games, agents, ws }, at: Date.now() });
+      invites.set(code, { from: u.id, to, at: Date.now() });
+      send(tws, { t: 'invited', code, from: { id: u.id, name: u.name, rating: Math.round(p.rating) } });
+      send(ws, { t: 'duel_code', code });
+      return send(ws, { t: 'invite_status', state: 'sent', name: target.name });
+    }
+    case 'invite_answer': {
+      const code = String(m.code ?? '').toUpperCase(), inv = invites.get(code);
+      if (!inv || inv.to !== u.id) return send(ws, { t: 'err', msg: 'Вызов устарел' });
+      invites.delete(code);
+      if (!m.accept) { duels.delete(code); return send(online.get(inv.from), { t: 'invite_status', state: 'declined', name: u.name }); }
+      return onMessage(ws, { t: 'duel_join', code, agents: m.agents as Agents });
+    }
+    case 'rematch': {
+      const agents = validAgents(m.agents), rm = rematch.get(u.id);
+      if (!agents || !rm || Date.now() - rm.at > 120_000) return send(ws, { t: 'rematch', state: 'gone' });
+      if (r || roomOf.has(rm.opp)) return send(ws, { t: 'rematch', state: 'gone' });
+      rm.agents = agents;
+      const other = rematch.get(rm.opp);
+      if (other?.opp === u.id && other.agents) {
+        rematch.delete(u.id); rematch.delete(rm.opp);
+        const a = loadPlayer(u.id, u.name), bRow = db.query('SELECT * FROM players WHERE id = ?').get(rm.opp) as PlayerRow;
+        leaveQueue(u.id); leaveQueue(rm.opp);
+        createRoom({ id: u.id, name: u.name, rating: a.rating, games: a.games, agents, ws }, { id: rm.opp, name: bRow.name, rating: bRow.rating, games: bRow.games, agents: other.agents, ws: online.get(rm.opp) ?? null }, false);
+        return;
+      }
+      send(online.get(rm.opp), { t: 'rematch', state: 'offer' });
+      return send(ws, { t: 'rematch', state: 'wait' });
+    }
     case 'duel_create': {
       const agents = validAgents(m.agents);
       if (!agents || r) return send(ws, { t: 'err', msg: 'Нельзя создать дуэль сейчас' });

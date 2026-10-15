@@ -27,7 +27,9 @@ export function levelOf(r: number) {
 export const leagueOf = (r: number) => { const l = levelOf(r); return { ...l, name: `Уровень ${l.level}`, icon: String(l.level) }; };
 
 /** Строка истории рейтинговых матчей (для профиля). */
-export interface HistRow { at: number; win: boolean; delta: number; after: number; opp: string; oppRating: number; map: string; reason: string }
+export interface HistRow { at: number; win: boolean; delta: number; after: number; opp: string; oppId: string; oppRating: number; map: string; reason: string }
+/** Игрок в списках друзей и недавних соперников. */
+export interface PeerRow { id: string; name: string; rating: number; games: number; online: boolean; inGame: boolean; friend: boolean; at?: number; win?: boolean }
 
 export interface PlayerInfo { id: string; name: string; rating: number; games: number; wins: number; league: string; provisional: boolean; level: number; peak: number; rank?: number }
 
@@ -49,6 +51,13 @@ export type C2S =
   | { t: 'resign' }
   | { t: 'top' }
   | { t: 'profile' }
+  | { t: 'friends' }
+  | { t: 'friend_add'; id: string }
+  | { t: 'friend_del'; id: string }
+  | { t: 'player'; id: string }
+  | { t: 'invite'; id: string; agents: Agents }
+  | { t: 'invite_answer'; code: string; accept: boolean; agents?: Agents }
+  | { t: 'rematch'; agents: Agents }
   | { t: 'ping' };
 
 // ── Сервер → клиент ──
@@ -56,7 +65,7 @@ export type S2C =
   | { t: 'me'; me: PlayerInfo; season: string }
   | { t: 'queued'; size: number; lo?: number; hi?: number; since?: number }
   | { t: 'duel_code'; code: string }
-  | { t: 'found'; ranked: boolean; opp: { name: string; rating: number; league: string } }
+  | { t: 'found'; ranked: boolean; opp: { id?: string; name: string; rating: number; league: string } }
   /** Ножевой раунд (уже повёрнут: вы — 0). pick: кто выбирает сторону, когда ножи закончились. */
   | { t: 'knife'; k: KnifeState; picked: boolean; oppPicked: boolean; reveal?: KnifeRound; deadline: number; pick?: 'me' | 'opp'; oppAgents: Agents }
   | { t: 'veto'; maps: string[]; banned: { map: string; mine: boolean }[]; myTurn: boolean; deadline: number; picked?: string }
@@ -68,6 +77,11 @@ export type S2C =
   | { t: 'opp_status'; online: boolean; graceUntil?: number }
   | { t: 'over'; winner: PI; reason: string; ranked: boolean; rating?: { before: number; after: number; league: string } }
   | { t: 'profile'; history: HistRow[] }
+  | { t: 'friends'; friends: PeerRow[]; recent: PeerRow[] }
+  | { t: 'player'; me: PlayerInfo; history: HistRow[]; h2h: { wins: number; losses: number }; online: boolean; friend: boolean }
+  | { t: 'invited'; code: string; from: { id: string; name: string; rating: number } }
+  | { t: 'invite_status'; state: 'sent' | 'declined' | 'offline' | 'busy' | 'expired'; name: string }
+  | { t: 'rematch'; state: 'wait' | 'offer' | 'gone' }
   | { t: 'top'; rows: { name: string; rating: number; games: number; wins: number; league: string }[]; season: string }
   | { t: 'sync'; phase: 'veto' | 'mull' | 'play'; view?: HState; deadline: number; map?: string; side?: Side; myAgent?: string; oppAgent?: string; mullDone?: boolean }
   | { t: 'err'; msg: string }

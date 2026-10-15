@@ -17,12 +17,12 @@ import {
 import { apply, botMulligan, botStep, legalActions, type Action } from './ai';
 import { boardEmblem, boardScene, boardVars } from './boards';
 import * as net from '../online/client';
-import { LEVELS, levelOf, type HistRow, type PlayerInfo, type S2C } from '../online/protocol';
+import { LEVELS, levelOf, type HistRow, type PeerRow, type PlayerInfo, type S2C } from '../online/protocol';
 import { haptic } from '../telegram';
 import { questBump, type QuestDef, type QuestKind } from '../quests';
 import { shareResult } from '../share';
 
-type Phase = 'rating' | 'setup' | 'knife' | 'sidepick' | 'mull' | 'play' | 'gameover' | 'over' | 'cards' | 'rules' | 'lobby' | 'veto' | 'top';
+type Phase = 'rating' | 'setup' | 'knife' | 'sidepick' | 'mull' | 'play' | 'gameover' | 'over' | 'cards' | 'rules' | 'lobby' | 'veto' | 'top' | 'player';
 type Sel = null | { k: 'hand'; uid: string } | { k: 'atk'; id: string } | { k: 'power' };
 interface GameRes { win: boolean; reason: HState['reason']; side: Side; turns: number }
 const S = {
@@ -50,13 +50,15 @@ const S = {
   last: '',
   /** Онлайн-матч (null — игра с ботом). */
   on: null as null | OnlineMatch,
-  lobby: { me: null as PlayerInfo | null, season: '', queued: false, qsize: 0, range: null as null | { lo: number; hi: number; since: number }, history: null as HistRow[] | null, duel: null as string | null, err: '', top: [] as { name: string; rating: number; games: number; wins: number; league: string }[], pendingJoin: null as string | null, copied: false },
+  lobby: { me: null as PlayerInfo | null, season: '', queued: false, qsize: 0, range: null as null | { lo: number; hi: number; since: number }, history: null as HistRow[] | null, duel: null as string | null, err: '', top: [] as { name: string; rating: number; games: number; wins: number; league: string }[], pendingJoin: null as string | null, copied: false,
+    friends: null as PeerRow[] | null, recent: [] as PeerRow[], player: null as Extract<S2C, { t: 'player' }> | null, playerFrom: 'rating' as Phase,
+    invite: null as null | { code: string; from: { id: string; name: string; rating: number } }, invNote: '', rematch: '' as '' | 'wait' | 'offer' | 'gone' },
   radioOpen: false,
   /** Обучающий матч: какие подсказки уже показаны. */
   tut: null as null | TutState,
 };
 interface OnlineMatch {
-  ranked: boolean; opp: { name: string; rating: number; league: string };
+  ranked: boolean; opp: { id?: string; name: string; rating: number; league: string };
   side: Side; myAgent: string; oppAgent: string; deadline: number;
   oppOnline: boolean; graceUntil?: number;
   veto?: Extract<S2C, { t: 'veto' }>; picked?: string;
@@ -64,7 +66,7 @@ interface OnlineMatch {
   result?: Extract<S2C, { t: 'over' }>;
 }
 
-let hooks = { render: () => {}, menu: () => {}, root: document.body as HTMLElement, onMenu: () => false };
+let hooks = { render: () => {}, menu: () => {}, root: document.body as HTMLElement, onMenu: () => false, enter: () => {} };
 export function hsInit(h: typeof hooks) { hooks = h; setupDrag(); }
 const FAST = location.hash.includes('fast');
 const wait = (ms: number) => new Promise((r) => setTimeout(r, FAST ? 0 : ms));
@@ -892,6 +894,12 @@ export function hsClick(a: string, el: HTMLElement): boolean {
       S.lobby.err = ''; net.send({ t: 'duel_join', code, agents: { T: S.setup.T, CT: S.setup.CT } }); break;
     }
     case 'hs-top': S.phase = 'top'; net.send({ t: 'top' }); break;
+    case 'hs-player': if (el.dataset.id) { if (S.phase !== 'player') S.lobby.playerFrom = S.phase; S.lobby.player = null; S.phase = 'player'; net.send({ t: 'player', id: el.dataset.id }); } break;
+    case 'hs-player-back': S.phase = S.lobby.playerFrom === 'player' ? 'rating' : S.lobby.playerFrom; S.lobby.player = null; if (S.phase === 'rating') net.send({ t: 'friends' }); break;
+    case 'hs-friend-add': net.send({ t: 'friend_add', id: el.dataset.id! }); { const pl = S.lobby.player; if (pl && pl.me.id === el.dataset.id) pl.friend = true; } sfx.click(); break;
+    case 'hs-friend-del': net.send({ t: 'friend_del', id: el.dataset.id! }); { const pl = S.lobby.player; if (pl && pl.me.id === el.dataset.id) pl.friend = false; } break;
+    case 'hs-invite': S.lobby.err = ''; if (!net.send({ t: 'invite', id: el.dataset.id!, agents: { T: S.setup.T, CT: S.setup.CT } })) S.lobby.err = 'Нет связи с сервером'; sfx.click(); break;
+    case 'hs-rematch': if (S.lobby.rematch !== 'gone') { net.send({ t: 'rematch', agents: { T: S.setup.T, CT: S.setup.CT } }); sfx.click(); } break;
     case 'hs-rating': openLobby('rating'); return true;
     case 'hs-findmatch': openLobby('lobby'); return true;
     case 'hs-ban': if (S.on?.veto?.myTurn) { net.send({ t: 'ban', map: el.dataset.v! }); sfx.click(); } break;
@@ -913,6 +921,7 @@ export function hsHTML(): string {
   if (S.phase === 'lobby') return lobbyHTML();
   if (S.phase === 'veto') return vetoHTML();
   if (S.phase === 'top') return topHTML();
+  if (S.phase === 'player') return playerHTML();
   if (S.phase === 'rating') return ratingHTML();
   if (S.phase === 'cards') return catalogHTML();
   if (S.phase === 'rules') return rulesHTML();
@@ -1401,7 +1410,7 @@ function openLobby(page: 'lobby' | 'rating' = 'lobby') {
   S.phase = page; S.s = null; S.on = null; S.info = null; S.lobby.err = '';
   netInit();
   if (!net.connect()) S.lobby.err = 'Сервер онлайна не настроен (константа SERVER в src/online/client.ts).';
-  else if (page === 'rating') { net.send({ t: 'profile' }); net.send({ t: 'top' }); }
+  else if (page === 'rating') { net.send({ t: 'profile' }); net.send({ t: 'top' }); net.send({ t: 'friends' }); }
   hooks.render();
 }
 /** Открыть лобби и сразу войти в дуэль по коду из ссылки-приглашения. */
@@ -1412,16 +1421,34 @@ async function onNet(m: S2C) {
   switch (m.t) {
     case 'me':
       L.me = m.me; L.season = m.season;
-      if (S.phase === 'rating' && !L.history) { net.send({ t: 'profile' }); net.send({ t: 'top' }); }
+      if (S.phase === 'rating' && !L.history) { net.send({ t: 'profile' }); net.send({ t: 'top' }); net.send({ t: 'friends' }); }
       if (L.pendingJoin) { net.send({ t: 'duel_join', code: L.pendingJoin, agents: { T: S.setup.T, CT: S.setup.CT } }); L.pendingJoin = null; }
       break;
     case 'queued': L.queued = true; L.qsize = m.size; if (m.lo !== undefined) L.range = { lo: m.lo, hi: m.hi!, since: m.since! }; break;
     case 'profile': L.history = m.history; break;
     case 'duel_code': L.duel = m.code; break;
+    case 'friends': L.friends = m.friends; L.recent = m.recent; break;
+    case 'player': L.player = m; break;
+    case 'invited':
+      if (S.on && S.phase !== 'over') return;   // в матче вызовы не показываем (сервер и так отвечает «занят»)
+      L.invite = { code: m.code, from: m.from }; haptic.win(); sfx.turn();
+      setTimeout(() => { if (L.invite?.code === m.code) { L.invite = null; hooks.render(); } }, 60_000);
+      break;
+    case 'invite_status': {
+      const txt = { sent: `Вызов отправлен: ${m.name}. Ждём ответа…`, declined: `${m.name} отклонил вызов`, offline: `${m.name} сейчас не в сети`, busy: `${m.name} сейчас в матче`, expired: `${m.name} не ответил на вызов` }[m.state];
+      L.invNote = txt;
+      if (m.state === 'sent') { if (S.phase !== 'lobby') { S.phase = 'lobby'; S.s = null; S.on = null; } }
+      else { if (m.state !== 'busy' && m.state !== 'offline') L.duel = null; fx.banner(txt, 'info', 1800); }
+      break;
+    }
+    case 'rematch':
+      L.rematch = m.state;
+      if (m.state === 'offer') { haptic.win(); sfx.turn(); }
+      break;
     case 'err': L.err = m.msg; L.queued = false; if (S.phase !== 'lobby') fx.banner(m.msg, 'info', 1400); break;
     case 'top': L.top = m.rows; L.season = m.season; break;
     case 'found':
-      L.queued = false; L.duel = null; L.err = '';
+      L.queued = false; L.duel = null; L.err = ''; L.invite = null; L.invNote = ''; L.rematch = '';
       S.on = { ranked: m.ranked, opp: m.opp, side: 'T', myAgent: '', oppAgent: '', deadline: 0, oppOnline: true, mullSent: false, confirmResign: false };
       S.score = [0, 0]; S.game = 1; S.results = []; S.journal = []; S.s = null;
       S.knife = null; S.phase = 'knife';
@@ -1495,7 +1522,7 @@ async function onNet(m: S2C) {
       S.on.oppOnline = m.online; S.on.graceUntil = m.graceUntil;
       fx.banner(m.online ? 'Соперник вернулся' : 'Соперник отключился — ждём', 'info', 1200);
       break;
-    case 'over': await finishOnline(m); break;
+    case 'over': L.rematch = ''; await finishOnline(m); break;
   }
   hooks.render();
 }
@@ -1561,7 +1588,7 @@ async function finishOnline(m: Extract<S2C, { t: 'over' }>) {
 }
 const REASON_RU: Record<string, (win: boolean) => string> = {
   bomb: () => 'Бомба взорвалась', defuse: () => 'Бомба обезврежена', hero: (w) => (w ? 'Герой соперника повержен' : 'Ваш герой повержен'),
-  resign: (w) => (w ? 'Соперник сдался' : 'Вы сдались'), leave: (w) => (w ? 'Соперник не вернулся' : 'Вы не вернулись вовремя'),
+  resign: (w) => (w ? 'Соперник сдался' : 'Вы сдались'), leave: (w) => (w ? 'Соперник вышел из матча' : 'Вы вышли из матча — штраф 35 Elo'),
 };
 
 // Таймеры (ход, вето, замена карт, ожидание соперника) — только меняем текст, без перерисовки экрана
@@ -1647,7 +1674,7 @@ function lobbyHTML() {
   return `<main class="rm scroll rm-setup ol">${head}${card}
     ${L.err ? `<p class="ol-err">${esc(L.err)}</p>` : ''}
     ${busy}
-    <p class="note">Рейтинговая — одна игра, ход 30 с, вето карт. Дуэль — без рейтинга. Связь пропала — у вас минута, чтобы вернуться.</p>
+    <p class="note">Рейтинговая — одна игра, ход 30 с, вето карт. Дуэль — без рейтинга. Связь пропала — у вас минута, чтобы вернуться; не вернулись — −35 Elo.</p>
     ${agentPickHTML()}
   </main>`;
 }
@@ -1688,18 +1715,75 @@ function ratingHTML(): string {
   }
   const hist = L.history;
   const hHTML = !me ? '' : !hist ? '<p class="note">Загружаем матчи…</p>' : !hist.length ? '<p class="note">Сыграйте первый рейтинговый матч — здесь появится история.</p>'
-    : `<ol class="rt-hist">${hist.map((h) => `<li class="${h.win ? 'w' : 'l'}"><b>${h.win ? 'W' : 'L'}</b>
-        <span><em>${esc(h.opp)}</em><small>${esc(mapDef(h.map)?.name ?? h.map)} · ${new Date(h.at).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })}</small></span>
-        ${levelBadge(h.oppRating, 'xs')}<i>${h.delta >= 0 ? '+' : ''}${h.delta}</i></li>`).join('')}</ol>`;
+    : histList(hist, true);
   const myLv = me ? levelOf(me.rating).level : 0;
   const levels = `<div class="rt-levels">${LEVELS.map((x) => `<div class="${x.level === myLv ? 'on' : ''}">${levelBadge(x.min, 'xs')}<span>${x.max === Infinity ? `${x.min}+` : `${x.min}–${x.max}`}</span></div>`).join('')}</div>`;
   const top = L.top.length ? `<ol class="ol-top">${L.top.slice(0, 10).map((r) => `<li>${levelBadge(r.rating, 'xs')}<b>${esc(r.name)}</b><span>${r.rating}</span><small>${r.wins} побед из ${r.games}</small></li>`).join('')}</ol>` : '';
   return `<main class="rm scroll ol rt">${head}${card}
+    ${me ? friendsHTML() : ''}
     ${me ? `<h4 class="sub">Последние матчи</h4>${hHTML}` : ''}
     <h4 class="sub">Уровни</h4>${levels}
     <p class="note">Все начинают с 1000 Elo — это 4 уровень. Победа над равным соперником даёт около +25, поражение — около −25; победить сильного выгоднее, проиграть слабому — дороже. Подбор ищет соперника в пределах ±100 Elo и, пока вы ждёте, расширяет окно до ±350.</p>
     ${top ? `<h4 class="sub">Топ сезона</h4>${top}` : ''}
   </main>`;
+}
+
+function histList(hist: HistRow[], link: boolean) {
+  return `<ol class="rt-hist">${hist.map((h) => `<li class="${h.win ? 'w' : 'l'}"${link && h.oppId ? ` data-act="hs-player" data-id="${esc(h.oppId)}"` : ''}><b>${h.win ? 'W' : 'L'}</b>
+        <span><em>${esc(h.opp)}</em><small>${esc(mapDef(h.map)?.name ?? h.map)} · ${new Date(h.at).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })}</small></span>
+        ${levelBadge(h.oppRating, 'xs')}<i>${h.delta >= 0 ? '+' : ''}${h.delta}</i></li>`).join('')}</ol>`;
+}
+// ── Друзья и недавние соперники ──
+function peerHTML(p: PeerRow) {
+  const st = p.inGame ? '<small class="pr-st game">в матче</small>' : p.online ? '<small class="pr-st on">в сети</small>' : '<small class="pr-st">не в сети</small>';
+  const act = p.friend
+    ? `<button class="ghost sm" data-act="hs-invite" data-id="${esc(p.id)}" ${p.online && !p.inGame ? '' : 'disabled'}>Вызвать</button>`
+    : `<button class="ghost sm" data-act="hs-friend-add" data-id="${esc(p.id)}" title="В друзья">+ друг</button>`;
+  return `<li class="pr ${p.online ? 'on' : ''}"><button class="pr-who" data-act="hs-player" data-id="${esc(p.id)}">${levelBadge(p.rating, 'xs')}<i class="pr-dot"></i>
+    <span><b>${esc(p.name)}</b>${st}</span>${p.win !== undefined ? `<em class="${p.win ? 'w' : 'l'}">${p.win ? 'W' : 'L'}</em>` : ''}</button>${act}</li>`;
+}
+function friendsHTML() {
+  const L = S.lobby;
+  if (!L.friends) return '<h4 class="sub">Друзья</h4><p class="note">Загружаем…</p>';
+  const fr = L.friends.length ? `<ul class="pr-list">${L.friends.map(peerHTML).join('')}</ul>`
+    : '<p class="note">Пока пусто. Добавляйте соперников из списка ниже или из истории матчей — потом сможете вызвать их на дуэль в один тап.</p>';
+  const rec = L.recent.filter((r) => !r.friend);
+  return `<h4 class="sub">Друзья</h4>${L.invNote ? `<p class="note">${esc(L.invNote)}</p>` : ''}${fr}
+    ${rec.length ? `<h4 class="sub">Недавние соперники</h4><ul class="pr-list">${rec.map(peerHTML).join('')}</ul>` : ''}`;
+}
+function playerHTML() {
+  const L = S.lobby, p = L.player;
+  const head = `<header class="rm-head"><button class="ghost sm" data-act="hs-player-back">← Назад</button><span class="rm-title">Профиль</span><span></span></header>`;
+  if (!p) return `<main class="rm scroll ol rt">${head}<p class="note">Загружаем…</p></main>`;
+  const me = p.me, l = levelOf(me.rating), wr = me.games ? Math.round((me.wins / me.games) * 100) : 0;
+  const self = L.me?.id === me.id;
+  return `<main class="rm scroll ol rt">${head}
+    <section class="rt-me" style="--lc:${LEVEL_COLOR(l.level)}">${levelBadge(me.rating, 'xl')}
+      <div class="rt-main"><small>Уровень ${l.level}${me.rank ? ` · место #${me.rank}` : ''} · ${p.online ? '<span class="pr-st on">в сети</span>' : 'не в сети'}</small><b>${me.rating} <i>Elo</i></b><span>${esc(me.name)}</span></div>
+      <div class="rt-stats"><span><b>${me.games}</b>матчей</span><span><b>${wr}%</b>побед</span><span><b>${me.peak}</b>лучший</span></div>
+    </section>
+    ${self ? '' : `<p class="pr-h2h">Ваши встречи: <b class="w">${p.h2h.wins}</b> : <b class="l">${p.h2h.losses}</b></p>
+    <div class="pr-acts">
+      <button class="primary" data-act="hs-invite" data-id="${esc(me.id)}" ${p.online ? '' : 'disabled'}>Вызвать на дуэль</button>
+      ${p.friend ? `<button class="ghost" data-act="hs-friend-del" data-id="${esc(me.id)}">Убрать из друзей</button>` : `<button class="ghost" data-act="hs-friend-add" data-id="${esc(me.id)}">Добавить в друзья</button>`}
+    </div>${L.invNote ? `<p class="note">${esc(L.invNote)}</p>` : ''}`}
+    <h4 class="sub">Последние матчи</h4>${p.history.length ? histList(p.history, false) : '<p class="note">Пока нет рейтинговых матчей.</p>'}
+  </main>`;
+}
+/** Окно «вас вызывают на дуэль» — поверх любого экрана, включая главное меню. */
+export function hsInviteHTML(): string {
+  const v = S.lobby.invite;
+  if (!v) return '';
+  return `<div class="inv-pop" role="alertdialog"><div>${levelBadge(v.from.rating, 'xs')}<p><span><b>${esc(v.from.name)}</b> вызывает вас на дуэль</span><small>${v.from.rating} Elo · без рейтинга</small></p></div>
+    <button class="primary" data-act="inv-yes">Принять</button><button class="ghost" data-act="inv-no">Отклонить</button></div>`;
+}
+export function hsInvite(accept: boolean) {
+  const v = S.lobby.invite;
+  if (!v) return;
+  S.lobby.invite = null;
+  if (accept) { hooks.enter(); openLobby(); }
+  net.send({ t: 'invite_answer', code: v.code, accept, agents: { T: S.setup.T, CT: S.setup.CT } });
+  hooks.render();
 }
 
 function vetoHTML() {
@@ -1727,6 +1811,12 @@ function topHTML() {
   </main>`;
 }
 
+function rematchBtn() {
+  const st = S.lobby.rematch;
+  if (st === 'gone') return '<button class="primary big-btn" disabled>Реванш недоступен</button>';
+  if (st === 'wait') return '<button class="primary big-btn" disabled>Ждём ответа соперника…</button>';
+  return `<button class="primary big-btn ${st === 'offer' ? 'pulse' : ''}" data-act="hs-rematch">${st === 'offer' ? 'Соперник хочет реванш — принять' : 'Реванш'}</button>`;
+}
 function onlineOverHTML() {
   const o = S.on!, r = o.result!;
   const win = r.winner === 0;
@@ -1739,8 +1829,10 @@ function onlineOverHTML() {
     ${rt ? (() => { const lb = levelOf(rt.before).level, la = levelOf(rt.after).level;
       return `<div class="ol-delta ${delta >= 0 ? 'up' : 'down'}">${levelBadge(rt.after)}<div><b>${delta >= 0 ? '+' : ''}${delta} Elo</b><small>${rt.before} → ${rt.after}</small>
         ${la !== lb ? `<em class="${la > lb ? 'lvup' : 'lvdown'}">${la > lb ? 'Новый уровень' : 'Уровень понижен'}: ${la}</em>` : `<small>${levelProgress(rt.after)}</small>`}</div></div>`; })() : '<p class="note">Дуэль без рейтинга</p>'}
-    <button class="primary big-btn" data-act="hs-share">Поделиться</button>
+    ${rematchBtn()}
+    <button class="ghost" data-act="hs-share">Поделиться</button>
     <button class="ghost" data-act="hs-again">${o.ranked ? 'Ещё рейтинговая' : 'В лобби'}</button>
+    ${o.opp.id ? `<button class="ghost sm" data-act="hs-friend-add" data-id="${esc(o.opp.id)}">+ ${esc(o.opp.name)} в друзья</button>` : ''}
     <button class="ghost" data-act="hs-menu">В меню</button>
   </div></div>`;
 }

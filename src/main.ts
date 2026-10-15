@@ -7,7 +7,7 @@ import { loadStats, resetStats, stats } from './stats';
 import { sfx, soundOn, toggleSound, unlock as unlockSound } from './sound';
 import { toggleVoice, voiceEnabled } from './voice';
 import { analyticsOn, toggleAnalytics, track } from './analytics';
-import { hsClick, hsLevelBadge, hsLevelProgress, hsProfile, hsHTML, hsInit, hsJoinDuel, hsOpen } from './hs/ui';
+import { hsClick, hsInvite, hsInviteHTML, hsLevelBadge, hsLevelProgress, hsProfile, hsHTML, hsInit, hsJoinDuel, hsOpen } from './hs/ui';
 import { loadQuests, questView } from './quests';
 import { startDuelCode } from './online/client';
 import { agentArt, cssUrl, esc } from './art';
@@ -151,6 +151,8 @@ root.addEventListener('click', (ev) => {
   if (a === 'hs-page') { ui.screen = 'hs'; setBackButton(() => go('menu')); hsOpen(actEl.dataset.to as 'cards' | 'rules'); return; }
   if (a.startsWith('hs-') && ui.screen === 'hs' && hsClick(a, actEl)) return;
   switch (a) {
+    case 'inv-yes': return hsInvite(true);
+    case 'inv-no': return hsInvite(false);
     case 'menu': return go('menu');
     case 'stats': return go('stats');
     case 'quests': return go('quests');
@@ -171,13 +173,14 @@ function render() {
   const scroll = root.querySelector('.scroll')?.scrollTop ?? 0;
   if (ui.screen !== 'hs') fx.clear();
   let html = ui.screen === 'hs' ? hsHTML() : ui.screen === 'stats' ? statsHTML() : ui.screen === 'quests' ? questsHTML() : menuHTML();
+  html += hsInviteHTML();
   if (ui.toast) html += `<div class="toast">${esc(ui.toast)}</div>`;
   root.innerHTML = html;
   const sc = root.querySelector('.scroll');
   if (sc) sc.scrollTop = scroll;
 }
 
-hsInit({ render: () => render(), menu: () => go('menu'), root, onMenu: () => ui.screen === 'menu' });
+hsInit({ render: () => render(), menu: () => go('menu'), root, onMenu: () => ui.screen === 'menu', enter: () => { ui.screen = 'hs'; setBackButton(() => go('menu')); } });
 render();
 // Приглашение на дуэль (ссылка t.me/<бот>/<app>?startapp=duel_КОД) — сразу в лобби и в дуэль
 const duel = startDuelCode();
