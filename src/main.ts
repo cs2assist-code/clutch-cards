@@ -8,6 +8,7 @@ import { sfx, soundOn, toggleSound, unlock as unlockSound } from './sound';
 import { toggleVoice, voiceEnabled } from './voice';
 import { analyticsOn, toggleAnalytics, track } from './analytics';
 import { loadDecks } from './hs/decks';
+import { getLang, initI18n, setLang } from './i18n';
 import { musicEnabled, refreshMusic, setMusic, toggleMusic, unlockMusic } from './music';
 import { hsClick, hsMusic, hsInvite, hsInviteHTML, hsLevelBadge, hsLevelProgress, hsProfile, hsHTML, hsInit, hsJoinDuel, hsOpen } from './hs/ui';
 import { loadQuests, questView } from './quests';
@@ -64,6 +65,7 @@ function menuHTML() {
       <div class="km-logo"><i></i><b>КЛАТЧ</b><small>CS2 · карточная тактика</small></div>
       <div class="km-me">${me ? `<button class="km-rank" data-act="rating" title="Рейтинг">${hsLevelBadge(me.rating, 'xs')}<span><b>${me.rating}</b> Elo</span></button>`
         : `<button class="km-rank" data-act="rating"><span>Рейтинг</span></button>`}
+        <button class="km-lang" data-act="lang" aria-label="Language / Язык"><b class="${getLang() === 'ru' ? 'on' : ''}">RU</b><b class="${getLang() === 'en' ? 'on' : ''}">EN</b></button>
         <button class="km-icon ${ui.settingsOpen ? 'on' : ''}" data-act="settings" aria-label="Настройки">${ICON.gear}</button></div>
     </header>
     ${ui.settingsOpen ? `<div class="km-settings">
@@ -167,6 +169,7 @@ root.addEventListener('click', (ev) => {
     case 'settings': ui.settingsOpen = !ui.settingsOpen; return render();
     case 'sound': toggleSound(); if (soundOn()) sfx.click(); refreshMusic(); return render();
     case 'music': toggleMusic(); return render();
+    case 'lang': setLang(getLang() === 'ru' ? 'en' : 'ru', () => render()); track('lang', { lang: getLang() }); return;
     case 'voice': toggleVoice(); return render();
     case 'analytics': toggleAnalytics(); return render();
     case 'askreset': ui.confirmReset = true; return render();
@@ -188,6 +191,7 @@ function render() {
   if (sc) sc.scrollTop = scroll;
 }
 
+initI18n();
 hsInit({ render: () => render(), menu: () => go('menu'), root, onMenu: () => ui.screen === 'menu', enter: () => { ui.screen = 'hs'; setBackButton(() => go('menu')); } });
 render();
 // Приглашение на дуэль (ссылка t.me/<бот>/<app>?startapp=duel_КОД) — сразу в лобби и в дуэль

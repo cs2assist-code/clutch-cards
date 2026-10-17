@@ -1,4 +1,5 @@
 // Карточка результата: картинка 1080×1080 (кадр карты, исход, агент, рейтинг) и отправка в Telegram/соцсети.
+import { tr } from './i18n';
 // В Telegram и на телефонах — системное «Поделиться» с файлом; если его нет — картинка открывается
 // поверх игры (долгое нажатие — сохранить), а текст со ссылкой уходит через t.me/share.
 import { shareLink } from './online/client';
@@ -25,22 +26,22 @@ export async function renderCard(s: ShareInfo): Promise<Blob | null> {
   const accent = s.win ? '#7ed957' : '#e0343a', sideC = s.side === 'T' ? '#e8b04a' : '#5aa8e8';
   g.fillStyle = accent; g.fillRect(0, 0, W, 14);
   g.textAlign = 'center';
-  g.fillStyle = '#f2c14e'; g.font = '700 54px Oswald, Impact, sans-serif'; g.fillText('КЛАТЧ', W / 2, 110);
-  g.fillStyle = '#c9ced6'; g.font = '600 30px Onest, Arial, sans-serif'; g.fillText(s.mode, W / 2, 158);
+  g.fillStyle = '#f2c14e'; g.font = '700 54px Oswald, Impact, sans-serif'; g.fillText(tr('КЛАТЧ'), W / 2, 110);
+  g.fillStyle = '#c9ced6'; g.font = '600 30px Onest, Arial, sans-serif'; g.fillText(tr(s.mode), W / 2, 158);
   if (ag) {
     g.save(); g.beginPath(); g.arc(W / 2, 400, 170, 0, Math.PI * 2); g.closePath(); g.fillStyle = '#1b1f27'; g.fill(); g.clip();
     const k = Math.max(340 / ag.width, 340 / ag.height); g.drawImage(ag, W / 2 - (ag.width * k) / 2, 400 - (ag.height * k) / 2, ag.width * k, ag.height * k); g.restore();
     g.lineWidth = 10; g.strokeStyle = sideC; g.beginPath(); g.arc(W / 2, 400, 172, 0, Math.PI * 2); g.stroke();
   }
-  g.fillStyle = accent; g.font = '700 120px Oswald, Impact, sans-serif'; g.fillText(s.title, W / 2, 720);
-  g.fillStyle = '#e9ecf1'; g.font = '600 40px Onest, Arial, sans-serif'; g.fillText(s.subtitle, W / 2, 785);
-  g.fillStyle = '#aab1bc'; g.font = '500 34px Onest, Arial, sans-serif'; g.fillText(`${s.agentName} · ${s.side} · ${s.map}`, W / 2, 845);
+  g.fillStyle = accent; g.font = '700 120px Oswald, Impact, sans-serif'; g.fillText(tr(s.title), W / 2, 720);
+  g.fillStyle = '#e9ecf1'; g.font = '600 40px Onest, Arial, sans-serif'; g.fillText(tr(s.subtitle), W / 2, 785);
+  g.fillStyle = '#aab1bc'; g.font = '500 34px Onest, Arial, sans-serif'; g.fillText(tr(`${s.agentName} · ${s.side} · ${s.map}`), W / 2, 845);
   if (s.rating) {
     const d = s.rating.after - s.rating.before;
     g.fillStyle = d >= 0 ? '#7ed957' : '#e0343a'; g.font = '700 46px Onest, Arial, sans-serif';
-    g.fillText(`${s.rating.after} (${d >= 0 ? '+' : ''}${d}) · ${s.rating.league}`, W / 2, 925);
+    g.fillText(tr(`${s.rating.after} (${d >= 0 ? '+' : ''}${d}) · ${s.rating.league}`), W / 2, 925);
   }
-  g.fillStyle = '#6b7380'; g.font = '500 26px Onest, Arial, sans-serif'; g.fillText('Карточная тактика по CS2 в Telegram', W / 2, 1035);
+  g.fillStyle = '#6b7380'; g.font = '500 26px Onest, Arial, sans-serif'; g.fillText(tr('Карточная тактика по CS2 в Telegram'), W / 2, 1035);
   return new Promise((res) => c.toBlob((b) => res(b), 'image/png'));
 }
 

@@ -6,6 +6,7 @@ import * as fx from '../fx';
 import { c4, preloadShots, sample, sfx, weaponShot } from '../sound';
 import { preloadVoice, say, setSubtitle, type VoKey } from '../voice';
 import { track } from '../analytics';
+import { dateLoc, isEn, numLoc, tr } from '../i18n';
 import { agentsWithDecks, getDeck, setDeck } from './decks';
 import { recordRound, recordRoundsMatch, markTutorialDone } from '../stats';
 import { SIL } from './art-index';
@@ -75,7 +76,7 @@ export function hsInit(h: typeof hooks) { hooks = h; setupDrag(); }
 const FAST = location.hash.includes('fast');
 const wait = (ms: number) => new Promise((r) => setTimeout(r, FAST ? 0 : ms));
 /** Деньги в тысячах, через запятую: 5300 → «$5,3K», 600 → «$0,6K». */
-const kilo = (n: number) => (n / 1000).toLocaleString('ru-RU', { maximumFractionDigits: 2 });
+const kilo = (n: number) => numLoc(n / 1000);
 const money = (n: number) => '$' + kilo(n) + 'K';
 const DIFF_RU: Record<Diff, string> = { easy: 'Новичок', normal: 'Обычный', hard: 'Сложный' };
 const other = (x: Side): Side => (x === 'T' ? 'CT' : 'T');
@@ -944,7 +945,7 @@ export function hsClick(a: string, el: HTMLElement): boolean {
     case 'hs-unqueue': net.send({ t: 'unqueue' }); S.lobby.queued = false; S.lobby.range = null; break;
     case 'hs-duel-create': S.lobby.err = ''; S.lobby.copied = false; if (!net.send({ t: 'duel_create', agents: agentsWithDecks(S.setup.T, S.setup.CT) })) S.lobby.err = 'Нет связи с сервером'; break;
     case 'hs-duel-cancel': net.send({ t: 'duel_cancel' }); S.lobby.duel = null; break;
-    case 'hs-duel-share': if (S.lobby.duel) { const code = S.lobby.duel; void net.shareLink(net.duelLink(code), `Дуэль в «Клатче»! Код ${code}`).then((r) => { S.lobby.copied = r === 'copy'; hooks.render(); }); } return true;
+    case 'hs-duel-share': if (S.lobby.duel) { const code = S.lobby.duel; void net.shareLink(net.duelLink(code), tr(`Дуэль в «Клатче»! Код ${code}`)).then((r) => { S.lobby.copied = r === 'copy'; hooks.render(); }); } return true;
     case 'hs-duel-join': {
       const code = (hooks.root.querySelector<HTMLInputElement>('#duelcode')?.value ?? '').trim().toUpperCase();
       if (!/^[A-Z0-9]{6}$/.test(code)) { S.lobby.err = 'Код — 6 букв и цифр'; break; }
@@ -1120,7 +1121,7 @@ function cardFace(c: HCard, free = false, cost = c.cost, side: Side = mySide()) 
     ${art ? `<span class="hc-full"><img src="${esc(art)}" alt=""></span>` : `<span class="hc-art"><img src="${esc(hImg(c))}" alt="" decoding="async"></span>`}
     <span class="hc-ribbon"><span class="hc-name">${esc(c.name)}</span></span>
     <span class="hc-type">${typeIcon(c)}</span>
-    <span class="hc-cost ${free ? 'free' : ''} ${cost < c.cost ? 'cheap' : ''}"><i>${free ? '0' : cost ? (cost / 1000).toLocaleString('ru-RU') : '0'}</i></span>${free ? '<span class="hc-trophy">трофей</span>' : ''}${c.modes ? '<span class="hc-modes">⇄</span>' : ''}
+    <span class="hc-cost ${free ? 'free' : ''} ${cost < c.cost ? 'cheap' : ''}"><i>${free ? '0' : cost ? numLoc(cost / 1000) : '0'}</i></span>${free ? '<span class="hc-trophy">трофей</span>' : ''}${c.modes ? '<span class="hc-modes">⇄</span>' : ''}
     ${c.kind === 'unit' ? `<b class="hc-atk"><i>${c.atk}</i></b><b class="hc-hp"><i>${c.hp}</i></b>` : c.kind === 'bomb' ? `<b class="hc-hp"><i>${c.hp}</i></b>` : ''}`;
 }
 function kwShort(kw: KW[]) { const k = kw.filter((x) => x !== 'vet'); return k.length ? `<p class="hcb-kw">${k.map((x) => `<i>${KW_RU[x][0]}</i>`).join('')}</p>` : ''; }
@@ -1338,7 +1339,7 @@ function deckEditHTML() {
   const mx = Math.max(1, ...buckets);
   const curve = `<div class="dk-curve" title="Сколько карт по цене">${buckets.map((b, i) => `<span><i style="height:${Math.round((b / mx) * 100)}%"></i><small>${i === 6 ? '6+' : i}</small></span>`).join('')}</div>`;
   const uniq = [...new Set(d.cards)].sort((x, y) => hcard(x).cost - hcard(y).cost || hcard(x).name.localeCompare(hcard(y).name));
-  const list = uniq.length ? `<ul class="dk-list">${uniq.map((id) => { const c = hcard(id); return `<li class="f-${c.side} ${c.sig ? 'sig' : ''}"><em>${(c.cost / 1000).toLocaleString('ru-RU')}</em><button class="dk-name" data-act="hs-cardinfo" data-v="${id}">${esc(c.name)}</button><b>×${cnt(id)}</b><button class="dk-minus" data-act="hs-deck-del" data-v="${id}" aria-label="Убрать">−</button></li>`; }).join('')}</ul>`
+  const list = uniq.length ? `<ul class="dk-list">${uniq.map((id) => { const c = hcard(id); return `<li class="f-${c.side} ${c.sig ? 'sig' : ''}"><em>${numLoc(c.cost / 1000)}</em><button class="dk-name" data-act="hs-cardinfo" data-v="${id}">${esc(c.name)}</button><b>×${cnt(id)}</b><button class="dk-minus" data-act="hs-deck-del" data-v="${id}" aria-label="Убрать">−</button></li>`; }).join('')}</ul>`
     : '<p class="note">Колода пуста — нажимайте карты ниже, чтобы добавить, или «Заполнить».</p>';
   const tabs = ([['all', 'Все'], ['unit', 'Бойцы'], ['spell', 'Действия'], ['trap', 'Засады']] as const).map(([k, t]) => `<button class="${d.filter === k ? 'on' : ''}" data-act="hs-deck-filter" data-v="${k}">${t}</button>`).join('');
   const info = S.info && HCARDS.some((c) => c.id === S.info) ? `<div class="hs-ov" data-act="hs-closeinfo"><div class="hs-ovbox">${bigCardHTML(hcard(S.info), undefined, side)}<button class="ghost" data-act="hs-closeinfo">Закрыть</button></div></div>` : '';
@@ -1733,7 +1734,7 @@ setInterval(() => {
   for (const el of document.querySelectorAll<HTMLElement>('.hs-timer[data-dl]')) {
     const dl = Number(el.dataset.dl);
     const left = Math.max(0, Math.ceil((dl - net.serverNow()) / 1000));
-    el.textContent = dl ? `${left} с` : '';
+    el.textContent = dl ? `${left} ${isEn() ? 's' : 'с'}` : '';
     el.classList.toggle('low', left <= 10);
   }
   for (const el of document.querySelectorAll<HTMLElement>('.ol-wait[data-since]')) {
@@ -1921,7 +1922,7 @@ function prizesHTML() {
 
 function histList(hist: HistRow[], link: boolean) {
   return `<ol class="rt-hist">${hist.map((h) => `<li class="${h.win ? 'w' : 'l'}"${link && h.oppId ? ` data-act="hs-player" data-id="${esc(h.oppId)}"` : ''}><b>${h.win ? 'W' : 'L'}</b>
-        <span><em>${esc(h.opp)}</em><small>${esc(mapDef(h.map)?.name ?? h.map)} · ${new Date(h.at).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })}</small></span>
+        <span><em>${esc(h.opp)}</em><small>${esc(mapDef(h.map)?.name ?? h.map)} · ${dateLoc(h.at, { day: 'numeric', month: 'short' })}</small></span>
         ${levelBadge(h.oppRating, 'xs')}<i>${h.delta >= 0 ? '+' : ''}${h.delta}</i></li>`).join('')}</ol>`;
 }
 // ── Друзья и недавние соперники ──
@@ -1948,7 +1949,7 @@ function reportHTML() {
   const r = S.report;
   if (!r) return '';
   return `<div class="hs-ov rep-ov"><div class="hs-ovbox rep-box">
-    <h3>Пожаловаться${r.name ? ` на ${esc(r.name)}` : ''}</h3>
+    <h3>Пожаловаться${r.name ? `: ${esc(r.name)}` : ''}</h3>
     <p class="note">Жалобы смотрит модератор. Ложные жалобы не помогают — отправляйте, только если правда что-то не так.</p>
     <div class="rep-list">${REPORT_REASONS.map((k) => `<button class="${r.reason === k ? 'on' : ''}" data-act="hs-report-reason" data-v="${k}">${REPORT_RU[k]}</button>`).join('')}</div>
     <textarea id="repnote" maxlength="300" rows="2" placeholder="Комментарий (необязательно)"></textarea>
@@ -2083,7 +2084,7 @@ async function shareNow() {
   const mode = S.on ? (S.on.ranked ? 'Рейтинговая игра' : `Дуэль · ${S.on.opp.name}`) : S.tut ? 'Обучение' : `Против бота · ${DIFF_RU[S.setup.diff]} · ${S.score[0]}:${S.score[1]}`;
   const img = (globalThis as { __CARD_IMG?: Record<string, string> }).__CARD_IMG?.[`agent_${agentId}`] ?? `img/agent_${agentId}.webp`;
   const text = win ? `Победа в «Клатче» на ${mapDef(S.map).name}! ${why}.` : `Сыграл в «Клатч» на ${mapDef(S.map).name}. ${why}.`;
-  await shareResult({ win, title: win ? 'ПОБЕДА' : 'ПОРАЖЕНИЕ', subtitle: why, map: mapDef(S.map).name, mapImg: mapDef(S.map).image, agentName: agent(agentId).name, agentImg: img, side, rating: o?.rating, mode }, text);
+  await shareResult({ win, title: win ? 'ПОБЕДА' : 'ПОРАЖЕНИЕ', subtitle: why, map: mapDef(S.map).name, mapImg: mapDef(S.map).image, agentName: agent(agentId).name, agentImg: img, side, rating: o?.rating, mode }, tr(text));
 }
 
 // ─────────────────────────── Обучение ───────────────────────────

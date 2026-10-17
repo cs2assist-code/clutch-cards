@@ -105,3 +105,6 @@
 .km-rank b { font: 700 15px 'Oswald', var(--km-head); }
 .km-rank:hover { border-color: rgba(255,255,255,.22); }
 .km-play small { display: flex; align-items: center; gap: 6px; text-transform: none; letter-spacing: .02em; }
+.km-lang { display: flex; align-items: center; gap: 0; padding: 0; height: 34px; border-radius: 3px; overflow: hidden; border: 1px solid rgba(255,255,255,.18); background: rgba(10,12,15,.6); cursor: pointer; }
+.km-lang b { font: 700 11px/34px var(--km-head); letter-spacing: .06em; padding: 0 8px; color: var(--km-muted); }
+.km-lang b.on { background: #e8a33d; color: #1a1006; }
