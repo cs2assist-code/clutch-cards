@@ -149,15 +149,15 @@ export const HCARDS: HCard[] = [
   trap('backup', 'Тиммейт на подхвате', 'N', 2000, 'Засада. Когда ваш боец погибает, на его место выходит Тиммейт 2/5.', 'drop'),
 
   // ─── Фирменные карты агентов ───
-  u('sw_shield', 'CT', 2500, 2, 8, 'rifle', ['taunt'], { name: 'Щитовик SWAT', armor: 1, img: 'agent_ct_swat', sig: 'ct_swat' }),
-  sp('sw_armor', 'CT', 1500, 'none', 'Всем своим бойцам +1 брони и +1 здоровья.', { name: 'Склад брони', img: 'kevlar', sig: 'ct_swat' }),
+  u('sw_shield', 'CT', 2000, 2, 8, 'rifle', ['taunt'], { name: 'Щитовик SWAT', armor: 1, img: 'agent_ct_swat', sig: 'ct_swat' }),
+  sp('sw_armor', 'CT', 1500, 'none', 'Всем своим бойцам +1 брони и +1 атаки.', { name: 'Склад брони', img: 'kevlar', sig: 'ct_swat' }),
   u('se_spotter', 'CT', 1500, 2, 4, 'pistol', [], { name: 'Корректировщик', img: 'agent_ct_seal', sig: 'ct_seal', target: 'friendlySniper', bcOptional: true,
     text: 'При выходе: своему снайперу +2 атаки и сразу закончить перезарядку.' }),
   sp('se_long', 'CT', 2000, 'enemyUnit', '5 урона бойцу. Снайперу или пулемёту — 8.', { name: 'Дальний выстрел', img: 'scar20', sig: 'ct_seal' }),
   sp('fb_intel', 'CT', 1000, 'none', 'Уничтожить все засады врага и взять 2 карты.', { name: 'Разведданные', img: 'kit', sig: 'ct_fbi' }),
   u('fb_sapper', 'CT', 3000, 3, 5, 'smg', ['sapper'], { name: 'Сапёр FBI', img: 'agent_ct_fbi', sig: 'ct_fbi' }),
-  sp('sa_breach', 'CT', 3500, 'none', 'Ослепить всех вражеских бойцов.', { name: 'Штурм-группа', img: 'flash', sig: 'ct_sas' }),
-  u('sa_oper', 'CT', 3500, 3, 4, 'rifle', ['rush'], { name: 'Оператор SAS', img: 'agent_ct_sas', sig: 'ct_sas', target: 'enemyUnit', bcOptional: true,
+  sp('sa_breach', 'CT', 3000, 'none', 'Ослепить всех вражеских бойцов.', { name: 'Штурм-группа', img: 'flash', sig: 'ct_sas' }),
+  u('sa_oper', 'CT', 3000, 3, 4, 'rifle', ['rush'], { name: 'Оператор SAS', img: 'agent_ct_sas', sig: 'ct_sas', target: 'enemyUnit', bcOptional: true,
     text: 'При выходе: ослепить вражеского бойца.' }),
   sp('gi_shield', 'CT', 1500, 'friendlyUnit', 'Бойцу +3 здоровья, +1 брони и Укрытие.', { name: 'Баллистический щит', img: 'shield', sig: 'ct_gign' }),
   u('gi_gend', 'CT', 3000, 3, 5, 'smg', ['taunt'], { name: 'Жандарм GIGN', img: 'agent_ct_gign', sig: 'ct_gign', text: 'При выходе: соседям +1 атаки и +1 здоровья.' }),
@@ -215,9 +215,9 @@ export interface Power { name: string; text: string; target: HTarget; cost: numb
 export const POWER_COST = 2000;
 export const POWERS: Record<string, Power> = {
   ct_swat: { name: 'Бронежилет', text: '+3 брони герою, всем своим бойцам +1 брони и +1 здоровья.', target: 'none', cost: 1000 },
-  ct_seal: { name: 'Точный выстрел', text: '2 урона любому персонажу, неохраняемой бомбе — 3.', target: 'any', cost: POWER_COST },
+  ct_seal: { name: 'Точный выстрел', text: '2 урона любому персонажу, неохраняемой бомбе — 3.', target: 'any', cost: 2500 },
   ct_fbi: { name: 'Сапёрный набор', text: '1 урон бойцу сквозь броню, бомбе — 2.', target: 'anyUnit', cost: 2000 },
-  ct_sas: { name: 'Светошумовая', text: 'Ослепить вражеского бойца: пропустит атаку и не ответит на выстрел.', target: 'enemyUnit', cost: 1500 },
+  ct_sas: { name: 'Светошумовая', text: 'Ослепить вражеского бойца и нанести ему 1 урон: пропустит атаку и не ответит на выстрел.', target: 'enemyUnit', cost: 2000 },
   ct_gign: { name: 'Щит', text: 'Своему бойцу +1 атаки и +2 здоровья.', target: 'friendlyUnit', cost: POWER_COST },
   t_phoenix: { name: 'Нож', text: 'Герой получает +3 атаки на этот ход.', target: 'none', cost: POWER_COST },
   t_elite: { name: 'Боевой клич', text: 'Своему бойцу +1 атаки и +1 здоровья; если он вышел в этом ходу — ещё и Рывок.', target: 'friendlyUnit', cost: POWER_COST },

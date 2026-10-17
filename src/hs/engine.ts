@@ -36,6 +36,7 @@ export const HS = {
   c4InHand: true,        // у T всегда есть бомба: она лежит в стартовой руке
   kitInHand: false,      // …а у CT — набор сапёра
   defuseBonus: 2000,
+  agentHp: { ct_swat: 3, ct_seal: 3, t_pro: 2 } as Record<string, number>,   // поправки здоровья героя по агентам (баланс)
   eco: true,             // «Эко-раунд»: ничего не сыграли за ход — на выбор 2 карты или деньги в следующем ходу
   ecoCards: 2,
   ecoCash: 3000,
@@ -156,8 +157,8 @@ export const heroId = (p: PI) => `h${p}`;
 /** Поправка здоровья бомбы по агенту: Balkan минирует подходы. */
 export const AGENT_BOMB_HP: Record<string, number> = { t_balkan: 1 };
 export const bombHpOf = (agentId: string) => HS.bombHp + (AGENT_BOMB_HP[agentId] ?? 0);
-export const AGENT_HP: Record<string, number> = { ct_swat: 3, ct_seal: 3, t_pro: 2 };
-export const maxHp = (agentId: string) => (styleOf(agentId) === 'hold' ? HS.holdHp : HS.heroHp) + (AGENT_HP[agentId] ?? 0);
+export const AGENT_HP: Record<string, number> = HS.agentHp;
+export const maxHp = (agentId: string) => (styleOf(agentId) === 'hold' ? HS.holdHp : HS.heroHp) + (HS.agentHp[agentId] ?? 0);
 export const foe = (p: PI): PI => (p === 0 ? 1 : 0);
 
 // ─────────────────────────── Начало игры ───────────────────────────
@@ -638,7 +639,7 @@ export function playCard(s: HState, p: PI, uid: string, target?: string, at?: nu
     case 'kit': { draw(s, p); const b = openBombs(en.board)[0]; if (b) damageUnit(s, b, HS.kitDmg); break; }
     case 'drop': P.money += 1000; s.log.push({ t: 'cash', p, n: 1000 }); break;
     // фирменные
-    case 'sw_armor': for (const x of P.board) if (!isBomb(x)) { addArmor(s, x, 1); x.hp++; x.maxHp++; } break;
+    case 'sw_armor': for (const x of P.board) if (!isBomb(x)) { addArmor(s, x, 1); x.atk++; } break;
     case 'se_long': if (tu) { const big = tu.kw.includes('sniper') || clsOf(tu) === 'heavy'; damageUnit(s, tu, big ? 8 : 5, { pierce: true, bonus: big }); } break;
     case 'fb_intel': if (en.traps.length) { s.log.push({ t: 'buff', id: heroId(foe(p)), text: `−${en.traps.length} засад` }); en.traps = []; } draw(s, p); draw(s, p); break;
     case 'sa_breach': for (const x of en.board) blind(s, x); break;
@@ -677,7 +678,7 @@ export function usePower(s: HState, p: PI, target?: string): boolean {
     case 'ct_swat': P.hero.armor += 3; s.log.push({ t: 'armor', id: heroId(p), n: 3 }); for (const x of P.board) if (!isBomb(x)) { addArmor(s, x, 1); x.hp++; x.maxHp++; } break;
     case 'ct_seal': if (target) { const fb = findUnit(s, target); damage(s, target, fb && isBomb(fb.u) ? 3 : 2, { pierce: true }); } break;
     case 'ct_fbi': if (tu) damageUnit(s, tu, isBomb(tu) ? 2 : 1, { pierce: true }); break;
-    case 'ct_sas': if (tu) blind(s, tu); break;
+    case 'ct_sas': if (tu) { blind(s, tu); damageUnit(s, tu, 1, { pierce: true }); } break;
     case 'ct_gign': if (tu) { tu.atk += 1; tu.hp += 2; tu.maxHp += 2; s.log.push({ t: 'buff', id: tu.uid, text: '+1/+2' }); } break;
     case 't_phoenix': P.hero.atk += 3; s.log.push({ t: 'buff', id: heroId(p), text: 'Нож' }); break;
     case 't_elite': if (tu) { tu.atk += 1; tu.hp += 1; tu.maxHp += 1; if (tu.sick && tu.attacks === 0) { tu.attacks = 1; addKw(tu, 'rush'); } s.log.push({ t: 'buff', id: tu.uid, text: '+1 атаки' }); } break;
