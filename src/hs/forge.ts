@@ -57,7 +57,7 @@ export function specProblems(s: CustomSpec): string[] {
   if (!intIn(s.armor, LIMITS.armor)) p.push(`Броня от ${LIMITS.armor[0]} до ${LIMITS.armor[1]}`);
   if (!Array.isArray(s.kw) || new Set(s.kw).size !== s.kw.length || s.kw.some((k) => !(k in KW_PTS))) p.push('Неверные свойства');
   else if (s.kw.length > LIMITS.kw) p.push(`Не больше ${LIMITS.kw} свойств`);
-  else for (const [a, k] of FORBIDDEN) if ((a === s.base || b.kw.includes(a as KW) || s.kw.includes(a as KW)) && (s.kw.includes(k) || b.kw.includes(k))) p.push(`Нельзя совмещать: ${nm(a)} и ${nm(k)}`);
+  else for (const [a, k] of FORBIDDEN) if ((a === s.base || b.kw.includes(a as KW) || s.kw.includes(a as KW)) && (s.kw.includes(k) || b.kw.includes(k))) p.push(`Нельзя совмещать: ${nm(a)} + ${nm(k)}`);
   if (!b.arts.includes(s.art)) p.push('Выберите портрет');
   if (p.length === 0 && pointsOf(s) > FORGE_BUDGET) p.push(`Пунктов ${pointsOf(s)} из ${FORGE_BUDGET} — уберите что-нибудь`);
   return p;
