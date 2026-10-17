@@ -11,6 +11,7 @@ async function page(b) {
   pg.setDefaultTimeout(5000);
   await pg.route(/telegram\.org|fonts\.(googleapis|gstatic)/, (r) => r.abort());
   pg.errs = []; pg.on('pageerror', (e) => pg.errs.push(e.message));
+  await pg.addInitScript(() => { try { localStorage.setItem('clutch_lang', 'ru'); } catch {} });   // тексты проверяем по-русски
   return pg;
 }
 

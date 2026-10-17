@@ -26,6 +26,8 @@ jobs:
         run: node scripts/vo-index.mjs && node scripts/art-index.mjs
       - name: Проверка типов (игра)
         run: npx tsc --noEmit -p .
+      - name: Словарь английского — все фразы переведены
+        run: node scripts/i18n-extract.mjs --strict
       - name: Проверка сборки сервера
         run: bun build server/server.ts --target bun --outdir /tmp/server-build
       - name: Симуляция 100 партий бот против бота

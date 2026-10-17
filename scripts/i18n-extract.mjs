@@ -47,3 +47,4 @@ const up = (k) => k.charAt(0).toUpperCase() + k.slice(1);
 const miss = all.filter((k) => k.length > 1 && !have.has(k) && !have.has(up(k)));
 console.log(`фраз: ${all.length}, в словаре: ${all.length - miss.length}, нет перевода: ${miss.length}`);
 for (const k of miss.slice(0, 400)) console.log('  ' + k);
+if (process.argv.includes('--strict') && miss.length) process.exit(1);
