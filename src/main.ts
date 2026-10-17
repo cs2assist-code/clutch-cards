@@ -7,6 +7,7 @@ import { loadStats, resetStats, stats } from './stats';
 import { sfx, soundOn, toggleSound, unlock as unlockSound } from './sound';
 import { toggleVoice, voiceEnabled } from './voice';
 import { analyticsOn, toggleAnalytics, track } from './analytics';
+import { loadDecks } from './hs/decks';
 import { hsClick, hsInvite, hsInviteHTML, hsLevelBadge, hsLevelProgress, hsProfile, hsHTML, hsInit, hsJoinDuel, hsOpen } from './hs/ui';
 import { loadQuests, questView } from './quests';
 import { startDuelCode } from './online/client';
@@ -27,6 +28,7 @@ if (location.hash.includes('fast')) fx.setFxSpeed(0.03);
 const svgI = (body: string, cls = 'ico') => `<svg class="${cls}" viewBox="0 0 24 24" aria-hidden="true">${body}</svg>`;
 const ICON = {
   gear: svgI('<path d="M12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7zm8.6 4.6-1.9.4a6.9 6.9 0 0 1-.7 1.7l1.1 1.6-1.6 1.6-1.6-1.1a6.9 6.9 0 0 1-1.7.7l-.4 1.9h-2.3l-.4-1.9a6.9 6.9 0 0 1-1.7-.7l-1.6 1.1-1.6-1.6 1.1-1.6a6.9 6.9 0 0 1-.7-1.7l-1.9-.4v-2.3l1.9-.4c.2-.6.4-1.2.7-1.7L5.1 6.6l1.6-1.6 1.6 1.1c.5-.3 1.1-.5 1.7-.7l.4-1.9h2.3l.4 1.9c.6.2 1.2.4 1.7.7l1.6-1.1 1.6 1.6-1.1 1.6c.3.5.5 1.1.7 1.7l1.9.4z" fill="currentColor"/>'),
+  deck: svgI('<rect x="6" y="3" width="12" height="16" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><path d="M3 7v12a2 2 0 0 0 2 2h10" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M12 7.5l1.2 2.4 2.6.4-1.9 1.8.5 2.6-2.4-1.3-2.4 1.3.5-2.6-1.9-1.8 2.6-.4z" fill="currentColor"/>'),
   play: svgI('<path d="M7 4.5v15l12-7.5z" fill="currentColor"/>'),
   cards: svgI('<rect x="3" y="4" width="8" height="11" rx="1.5" fill="none" stroke="currentColor" stroke-width="2"/><rect x="13" y="4" width="8" height="11" rx="1.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M3 19h18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>'),
   help: svgI('<circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.7.3-1 .8-1 1.6v.6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="17" r="1.2" fill="currentColor"/>'),
@@ -87,6 +89,7 @@ function menuHTML() {
       <nav class="km-nav">
         <button data-act="hs-page" data-to="rules">${ICON.help}<b>Как играть</b></button>
         <button data-act="hs-page" data-to="cards">${ICON.cards}<b>Все карты</b></button>
+        <button data-act="hs-page" data-to="decks">${ICON.deck}<b>Колоды</b></button>
         <button data-act="rating">${ICON.trophy}<b>Рейтинг</b></button>
         <button data-act="stats">${ICON.chart}<b>Статистика</b></button>
       </nav>
@@ -148,7 +151,7 @@ root.addEventListener('click', (ev) => {
   const a = actEl.dataset.act!;
   haptic.tap();
   if (a === 'hs-enter') { ui.screen = 'hs'; setBackButton(() => go('menu')); hsOpen(); return; }
-  if (a === 'hs-page') { ui.screen = 'hs'; setBackButton(() => go('menu')); hsOpen(actEl.dataset.to as 'cards' | 'rules'); return; }
+  if (a === 'hs-page') { ui.screen = 'hs'; setBackButton(() => go('menu')); hsOpen(actEl.dataset.to as 'cards' | 'rules' | 'decks'); return; }
   if (a.startsWith('hs-') && ui.screen === 'hs' && hsClick(a, actEl)) return;
   switch (a) {
     case 'inv-yes': return hsInvite(true);
@@ -185,7 +188,7 @@ render();
 // Приглашение на дуэль (ссылка t.me/<бот>/<app>?startapp=duel_КОД) — сразу в лобби и в дуэль
 const duel = startDuelCode();
 if (duel) { ui.screen = 'hs'; setBackButton(() => go('menu')); hsJoinDuel(duel); }
-void Promise.all([loadStats(), loadQuests()]).then(() => {
+void Promise.all([loadStats(), loadQuests(), loadDecks()]).then(() => {
   render();
   const tg = (window as unknown as { Telegram?: { WebApp?: { initData?: string; platform?: string } } }).Telegram?.WebApp;
   track('app_open', { tg: !!tg?.initData, pf: tg?.platform ?? 'web', w: innerWidth, h: innerHeight, games: stats.games, ms: Math.round(performance.now()) });

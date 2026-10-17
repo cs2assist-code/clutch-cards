@@ -8,7 +8,8 @@ import type { Side } from '../game/types';
 import type { KnifeRound, KnifeState, Move } from '../hs/knife';
 
 export const HIDDEN = 'hidden';
-export type Agents = { T: string; CT: string };
+/** Агенты игрока за обе стороны и (необязательно) его свои колоды для них. */
+export type Agents = { T: string; CT: string; dT?: string[]; dCT?: string[] };
 export type StepAction = Action | { k: 'end' };
 
 /** Уровни по рейтингу — как на FACEIT: 10 уровней, старт с 1000 (уровень 4). */

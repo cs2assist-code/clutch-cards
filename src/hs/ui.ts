@@ -6,10 +6,11 @@ import * as fx from '../fx';
 import { c4, preloadShots, sample, sfx, weaponShot } from '../sound';
 import { preloadVoice, say, setSubtitle, type VoKey } from '../voice';
 import { track } from '../analytics';
+import { agentsWithDecks, getDeck, setDeck } from './decks';
 import { recordRound, recordRoundsMatch, markTutorialDone } from '../stats';
 import { SIL } from './art-index';
 import { BEATS, botKnifeMove, KNIFE_HP, MOVE_RU, MOVES, newKnife, resolveKnife, type KnifeRound, type KnifeState, type Move } from './knife';
-import { CLASS_RU, HCARDS, hcard, hImg, unitArt, KW_RU, MAP_RULES, matchup, POWERS, sigCards, STYLE_BEATS, STYLE_RU, styleOf, type HCard, type KW, type Style } from './cards';
+import { agentDeck, CLASS_RU, DECK_MAX_COPIES, DECK_SIZE, deckPool, validDeck, HCARDS, hcard, hImg, unitArt, KW_RU, MAP_RULES, matchup, POWERS, sigCards, STYLE_BEATS, STYLE_RU, styleOf, type HCard, type KW, type Style } from './cards';
 import {
   attackTargets, attackBonus, canAttack, canSave, canShop, costOf, isClutch, isCovered, shopPrice, isBehind, lossBonus, maxHp, endTurn, canEco, eco, type EcoPick, findUnit, heroId, HS, incomeOf, KILL_REWARD, bombGuarded, mulligan, newGame, playTargets, powerTargets, startGame,
   type Diff, type Ev, type HState, type HUnit, type PI,
@@ -22,7 +23,7 @@ import { haptic } from '../telegram';
 import { questBump, type QuestDef, type QuestKind } from '../quests';
 import { shareResult } from '../share';
 
-type Phase = 'rating' | 'setup' | 'knife' | 'sidepick' | 'mull' | 'play' | 'gameover' | 'over' | 'cards' | 'rules' | 'lobby' | 'veto' | 'top' | 'player';
+type Phase = 'rating' | 'setup' | 'knife' | 'sidepick' | 'mull' | 'play' | 'gameover' | 'over' | 'cards' | 'rules' | 'lobby' | 'veto' | 'top' | 'player' | 'decks' | 'deck';
 type Sel = null | { k: 'hand'; uid: string } | { k: 'atk'; id: string } | { k: 'power' };
 interface GameRes { win: boolean; reason: HState['reason']; side: Side; turns: number }
 const S = {
@@ -54,7 +55,8 @@ const S = {
     friends: null as PeerRow[] | null, recent: [] as PeerRow[], player: null as Extract<S2C, { t: 'player' }> | null, playerFrom: 'rating' as Phase,
     invite: null as null | { code: string; from: { id: string; name: string; rating: number } }, invNote: '', rematch: '' as '' | 'wait' | 'offer' | 'gone', agentsOpen: false },
   radioOpen: false,
-  pvMore: false,   // в превью карты показаны подробности (классы, броня, расшифровка свойств)
+  pvMore: false,
+  deck: null as null | { agent: string; cards: string[]; filter: 'all' | 'unit' | 'spell' | 'trap'; saved: boolean },   // в превью карты показаны подробности (классы, броня, расшифровка свойств)
   /** Обучающий матч: какие подсказки уже показаны. */
   tut: null as null | TutState,
 };
@@ -79,7 +81,7 @@ const other = (x: Side): Side => (x === 'T' ? 'CT' : 'T');
 const mySide = () => (S.on ? S.on.side : S.side);
 
 // ─────────────────────────── Ход матча ───────────────────────────
-export function hsOpen(page: 'setup' | 'cards' | 'rules' | 'lobby' | 'rating' = 'setup') {
+export function hsOpen(page: 'setup' | 'cards' | 'rules' | 'lobby' | 'rating' | 'decks' = 'setup') {
   if (page === 'lobby') { openLobby(); return; }
   if (page === 'rating') { openLobby('rating'); return; }
   S.phase = page; S.s = null; S.on = null; S.info = null; hooks.render();
@@ -104,7 +106,7 @@ function newRound() {
   // #map=ancient в адресе — принудительно выбрать карту (для проверки оформления)
   const forced = location.hash.match(/map=(\w+)/)?.[1];
   S.map = S.tut ? 'dust2' : forced && MAPS.some((m) => m.id === forced) ? forced : MAPS[Math.floor(Math.random() * MAPS.length)].id;
-  S.s = newGame([S.setup[side], S.botAgent], [side, other(side)], S.map);
+  S.s = newGame([S.setup[side], S.botAgent], [side, other(side)], S.map, [S.tut ? null : getDeck(S.setup[side]), null]);
   if (S.tut) tutorialDeal(S.s);
   S.journal.push({ sep: true, text: `Матч · ${mapDef(S.map).name}: ${MAP_RULES[S.map] ?? ''}` });
   mulligan(S.s, 1, botMulligan(S.s, 1));
@@ -854,6 +856,24 @@ export function hsClick(a: string, el: HTMLElement): boolean {
     case 'hs-menu': S.s = null; S.tut = null; if (S.on && S.phase !== 'over') net.send({ t: 'resign' }); S.on = null; hooks.menu(); return true;
     case 'hs-cardinfo': S.info = S.info === el.dataset.v ? null : el.dataset.v!; break;
     case 'hs-closeinfo': S.info = null; break;
+    case 'hs-decks': S.phase = 'decks'; S.deck = null; S.info = null; break;
+    case 'hs-deck-edit': { const a = el.dataset.v!; S.deck = { agent: a, cards: [...(getDeck(a) ?? [])], filter: 'all', saved: true }; S.phase = 'deck'; S.info = null; track('deck_open', { agent: a }); break; }
+    case 'hs-deck-add': { const d = S.deck, id = el.dataset.v!; if (!d) break;
+      if (d.cards.length >= DECK_SIZE || d.cards.filter((x) => x === id).length >= DECK_MAX_COPIES) { sfx.deny(); break; }
+      d.cards.push(id); d.saved = false; sfx.click(); break; }
+    case 'hs-deck-del': { const d = S.deck; if (!d) break; const i = d.cards.lastIndexOf(el.dataset.v!); if (i >= 0) { d.cards.splice(i, 1); d.saved = false; } break; }
+    case 'hs-deck-fill': { const d = S.deck; if (!d) break;
+      // добрать до 20 картами стандартной колоды агента (сохраняя уже выбранные)
+      for (let tries = 0; tries < 6 && d.cards.length < DECK_SIZE; tries++) for (const id of agentDeck(d.agent)) {
+        if (d.cards.length >= DECK_SIZE) break;
+        if (d.cards.filter((x) => x === id).length < DECK_MAX_COPIES && deckPool(d.agent).includes(id)) d.cards.push(id);
+      }
+      d.saved = false; break; }
+    case 'hs-deck-clear': if (S.deck) { S.deck.cards = []; S.deck.saved = false; } break;
+    case 'hs-deck-filter': if (S.deck) S.deck.filter = el.dataset.v as 'all' | 'unit' | 'spell' | 'trap'; break;
+    case 'hs-deck-save': if (S.deck && validDeck(S.deck.agent, S.deck.cards)) { setDeck(S.deck.agent, S.deck.cards); S.deck.saved = true; track('deck_save', { agent: S.deck.agent }); fx.banner('Колода сохранена', 'defuse', 1000); sfx.buy(); } else sfx.deny(); break;
+    case 'hs-deck-reset': if (S.deck) { setDeck(S.deck.agent, null); S.deck = null; S.phase = 'decks'; fx.banner('Будет играть стандартная колода', 'info', 1200); } break;
+    case 'hs-deck-back': S.deck = null; S.phase = 'decks'; S.info = null; break;
     case 'hs-pvmore': S.pvMore = !S.pvMore; if (S.pvMore) track('pv_more'); break;
     case 'hs-help': S.help = true; break;
     case 'hs-closehelp': S.help = false; break;
@@ -909,24 +929,24 @@ export function hsClick(a: string, el: HTMLElement): boolean {
     case 'hs-eco': S.info = null; void playerEndTurn(el.dataset.v as EcoPick); return true;
     case 'hs-again': if (S.on) { S.on = null; S.s = null; openLobby(); return true; } hsOpen(); return true;
     case 'hs-lobby': S.on = null; S.s = null; openLobby(); return true;
-    case 'hs-queue': S.lobby.err = ''; if (net.send({ t: 'queue', agents: { T: S.setup.T, CT: S.setup.CT } })) { S.lobby.queued = true; queuedAt = Date.now(); track('online_queue', { elo: S.lobby.me?.rating ?? 0 }); sfx.click(); } else S.lobby.err = 'Нет связи с сервером'; break;
+    case 'hs-queue': S.lobby.err = ''; if (net.send({ t: 'queue', agents: agentsWithDecks(S.setup.T, S.setup.CT) })) { S.lobby.queued = true; queuedAt = Date.now(); track('online_queue', { elo: S.lobby.me?.rating ?? 0 }); sfx.click(); } else S.lobby.err = 'Нет связи с сервером'; break;
     case 'hs-agents': S.lobby.agentsOpen = !S.lobby.agentsOpen; break;
     case 'hs-unqueue': net.send({ t: 'unqueue' }); S.lobby.queued = false; S.lobby.range = null; break;
-    case 'hs-duel-create': S.lobby.err = ''; S.lobby.copied = false; if (!net.send({ t: 'duel_create', agents: { T: S.setup.T, CT: S.setup.CT } })) S.lobby.err = 'Нет связи с сервером'; break;
+    case 'hs-duel-create': S.lobby.err = ''; S.lobby.copied = false; if (!net.send({ t: 'duel_create', agents: agentsWithDecks(S.setup.T, S.setup.CT) })) S.lobby.err = 'Нет связи с сервером'; break;
     case 'hs-duel-cancel': net.send({ t: 'duel_cancel' }); S.lobby.duel = null; break;
     case 'hs-duel-share': if (S.lobby.duel) { const code = S.lobby.duel; void net.shareLink(net.duelLink(code), `Дуэль в «Клатче»! Код ${code}`).then((r) => { S.lobby.copied = r === 'copy'; hooks.render(); }); } return true;
     case 'hs-duel-join': {
       const code = (hooks.root.querySelector<HTMLInputElement>('#duelcode')?.value ?? '').trim().toUpperCase();
       if (!/^[A-Z0-9]{6}$/.test(code)) { S.lobby.err = 'Код — 6 букв и цифр'; break; }
-      S.lobby.err = ''; net.send({ t: 'duel_join', code, agents: { T: S.setup.T, CT: S.setup.CT } }); break;
+      S.lobby.err = ''; net.send({ t: 'duel_join', code, agents: agentsWithDecks(S.setup.T, S.setup.CT) }); break;
     }
     case 'hs-top': S.phase = 'top'; net.send({ t: 'top' }); break;
     case 'hs-player': if (el.dataset.id) { if (S.phase !== 'player') S.lobby.playerFrom = S.phase; S.lobby.player = null; S.phase = 'player'; net.send({ t: 'player', id: el.dataset.id }); } break;
     case 'hs-player-back': S.phase = S.lobby.playerFrom === 'player' ? 'rating' : S.lobby.playerFrom; S.lobby.player = null; if (S.phase === 'rating') net.send({ t: 'friends' }); break;
     case 'hs-friend-add': track('friend_add'); net.send({ t: 'friend_add', id: el.dataset.id! }); { const pl = S.lobby.player; if (pl && pl.me.id === el.dataset.id) pl.friend = true; } sfx.click(); break;
     case 'hs-friend-del': net.send({ t: 'friend_del', id: el.dataset.id! }); { const pl = S.lobby.player; if (pl && pl.me.id === el.dataset.id) pl.friend = false; } break;
-    case 'hs-invite': track('invite_send'); S.lobby.err = ''; if (!net.send({ t: 'invite', id: el.dataset.id!, agents: { T: S.setup.T, CT: S.setup.CT } })) S.lobby.err = 'Нет связи с сервером'; sfx.click(); break;
-    case 'hs-rematch': if (S.lobby.rematch !== 'gone') { track('rematch', { st: S.lobby.rematch || 'ask' }); net.send({ t: 'rematch', agents: { T: S.setup.T, CT: S.setup.CT } }); sfx.click(); } break;
+    case 'hs-invite': track('invite_send'); S.lobby.err = ''; if (!net.send({ t: 'invite', id: el.dataset.id!, agents: agentsWithDecks(S.setup.T, S.setup.CT) })) S.lobby.err = 'Нет связи с сервером'; sfx.click(); break;
+    case 'hs-rematch': if (S.lobby.rematch !== 'gone') { track('rematch', { st: S.lobby.rematch || 'ask' }); net.send({ t: 'rematch', agents: agentsWithDecks(S.setup.T, S.setup.CT) }); sfx.click(); } break;
     case 'hs-rating': openLobby('rating'); return true;
     case 'hs-findmatch': openLobby('lobby'); return true;
     case 'hs-ban': if (S.on?.veto?.myTurn) { net.send({ t: 'ban', map: el.dataset.v! }); sfx.click(); } break;
@@ -951,6 +971,8 @@ export function hsHTML(): string {
   if (S.phase === 'player') return playerHTML();
   if (S.phase === 'rating') return ratingHTML();
   if (S.phase === 'cards') return catalogHTML();
+  if (S.phase === 'decks') return decksHTML();
+  if (S.phase === 'deck') return deckEditHTML();
   if (S.phase === 'rules') return rulesHTML();
   if (S.phase === 'knife' || S.phase === 'sidepick') return knifeHTML();
   if (S.phase === 'setup' || !S.s) return setupHTML();
@@ -966,11 +988,12 @@ function setupHTML() {
     const id = st[side], pw = POWERS[id];
     return `<div class="rm-detail f-${side}"><span>Сила героя <em class="hs-pw">${esc(pw.name)}</em>: ${esc(pw.text)}</span>
       <small>Герой ${maxHp(id)} HP. ${esc(STYLE_RU[styleOf(id)].passive.replace(/^Герой \d+ HP; /, ''))}</small>
-      <small class="hs-sig">Классовые: ${sigCards(id).map((c) => esc(hcard(c).name)).join(', ')}</small></div>`;
+      <small class="hs-sig">Классовые: ${sigCards(id).map((c) => esc(hcard(c).name)).join(', ')}</small>
+      <small class="rm-deck">Колода: <b>${getDeck(id) ? 'своя' : 'стандартная'}</b> · <button class="linkbtn" data-act="hs-deck-edit" data-v="${id}">${getDeck(id) ? 'изменить' : 'собрать свою'}</button></small></div>`;
   };
   const help = S.help ? `<div class="hs-ov help" data-act="hs-closehelp"><div class="hs-ovbox rm-help" data-act="">
       <h3>Коротко о правилах</h3>
-      <p class="note">Снимите герою соперника ${HS.heroHp} HP. Деньги — это мана: ${money(HS.firstIncome)} в первый ход, дальше на ${money(HS.income)} больше. T побеждают и бомбой (она всегда в стартовой руке T), если CT не уничтожат её за ${HS.bombTimer} хода; боец T рядом с бомбой стреляет в сапёров. Перед партией — ножевой раунд: победитель выбирает сторону.</p>
+      <p class="note">Снимите герою соперника ${HS.heroHp} HP. Деньги — это мана: ${money(HS.firstIncome)} в первый ход, дальше на ${money(HS.income)} больше. T побеждают и бомбой (она всегда в стартовой руке T): не обезвредят за ${HS.bombTimer} хода — победа T, обезвредят — победа CT. Пока по бокам от бомбы стоят бойцы T, её нельзя бить. Перед партией — ножевой раунд: победитель выбирает сторону.</p>
       ${counterTableHTML()}${stylesHTML()}
       <div class="rm-helpbtns"><button class="ghost" data-act="hs-fullrules">Все правила</button><button class="primary" data-act="hs-closehelp">Понятно</button></div>
     </div></div>` : '';
@@ -1271,6 +1294,55 @@ function choiceHTML() {
 }
 
 // ─────────────────────────── Все карты и правила ───────────────────────────
+// ─────────────────────────── Свои колоды ───────────────────────────
+function decksHTML() {
+  const row = (side: Side) => AGENTS.filter((a) => a.side === side).map((a) => {
+    const d = getDeck(a.id);
+    return `<button class="dk-agent f-${side}" data-act="hs-deck-edit" data-v="${a.id}">
+      <span class="portrait xs">${agentArt(side, a.id)}</span><span><b>${esc(a.name)}</b>${styleTag(styleOf(a.id))}</span>
+      <em class="${d ? 'own' : ''}">${d ? 'Своя колода' : 'Стандартная'}</em></button>`;
+  }).join('');
+  return `<main class="rm scroll dk">
+    <header class="rm-head"><button class="ghost sm" data-act="hs-menu">← Меню</button><span class="rm-title">Колоды</span><span></span></header>
+    <p class="note">У каждого агента своя колода из ${DECK_SIZE} карт: его арсенал, фирменные карты и общие карты стороны, не больше ${DECK_MAX_COPIES} копий каждой. Без своей колоды играет стандартная — с случайным добором, партии не повторяются. Бомба у T и «Дроп» у CT выдаются сами. Своя колода работает и с ботом, и онлайн.</p>
+    <h4 class="sub">CT</h4><div class="dk-agents">${row('CT')}</div>
+    <h4 class="sub">T</h4><div class="dk-agents">${row('T')}</div>
+  </main>`;
+}
+function deckEditHTML() {
+  const d = S.deck!;
+  const a = agent(d.agent), side = a.side as Side;
+  const pool = deckPool(d.agent).map((id) => hcard(id))
+    .filter((c) => d.filter === 'all' || (d.filter === 'unit' ? c.kind === 'unit' : d.filter === 'spell' ? c.kind === 'spell' : c.kind === 'trap'))
+    .sort((x, y) => x.cost - y.cost || x.name.localeCompare(y.name));
+  const cnt = (id: string) => d.cards.filter((x) => x === id).length;
+  const n = d.cards.length, full = n === DECK_SIZE;
+  // кривая цен: сколько карт по $1K-ступеням
+  const buckets = [0, 0, 0, 0, 0, 0, 0];
+  for (const id of d.cards) buckets[Math.min(6, Math.floor(hcard(id).cost / 1000))]++;
+  const mx = Math.max(1, ...buckets);
+  const curve = `<div class="dk-curve" title="Сколько карт по цене">${buckets.map((b, i) => `<span><i style="height:${Math.round((b / mx) * 100)}%"></i><small>${i === 6 ? '6+' : i}</small></span>`).join('')}</div>`;
+  const uniq = [...new Set(d.cards)].sort((x, y) => hcard(x).cost - hcard(y).cost || hcard(x).name.localeCompare(hcard(y).name));
+  const list = uniq.length ? `<ul class="dk-list">${uniq.map((id) => { const c = hcard(id); return `<li class="f-${c.side} ${c.sig ? 'sig' : ''}"><em>${(c.cost / 1000).toLocaleString('ru-RU')}</em><button class="dk-name" data-act="hs-cardinfo" data-v="${id}">${esc(c.name)}</button><b>×${cnt(id)}</b><button class="dk-minus" data-act="hs-deck-del" data-v="${id}" aria-label="Убрать">−</button></li>`; }).join('')}</ul>`
+    : '<p class="note">Колода пуста — нажимайте карты ниже, чтобы добавить, или «Заполнить».</p>';
+  const tabs = ([['all', 'Все'], ['unit', 'Бойцы'], ['spell', 'Действия'], ['trap', 'Засады']] as const).map(([k, t]) => `<button class="${d.filter === k ? 'on' : ''}" data-act="hs-deck-filter" data-v="${k}">${t}</button>`).join('');
+  const info = S.info && HCARDS.some((c) => c.id === S.info) ? `<div class="hs-ov" data-act="hs-closeinfo"><div class="hs-ovbox">${bigCardHTML(hcard(S.info), undefined, side)}<button class="ghost" data-act="hs-closeinfo">Закрыть</button></div></div>` : '';
+  return `<main class="rm scroll dk">
+    <header class="rm-head"><button class="ghost sm" data-act="hs-deck-back">← Колоды</button><span class="rm-title">${esc(a.name)}</span><b class="dk-count ${full ? 'full' : ''}">${n}/${DECK_SIZE}</b></header>
+    <div class="dk-top">${curve}<div class="dk-btns">
+      <button class="primary sm" data-act="hs-deck-save" ${full && !d.saved ? '' : 'disabled'}>${d.saved && full && getDeck(d.agent) ? 'Сохранено' : 'Сохранить'}</button>
+      <button class="ghost sm" data-act="hs-deck-fill" ${full ? 'disabled' : ''}>Заполнить</button>
+      <button class="ghost sm" data-act="hs-deck-clear" ${n ? '' : 'disabled'}>Очистить</button>
+      <button class="ghost sm" data-act="hs-deck-reset" ${getDeck(d.agent) ? '' : 'disabled'}>Стандартная</button></div></div>
+    ${full ? '' : `<p class="note">Нужно ровно ${DECK_SIZE} карт — осталось добавить ${DECK_SIZE - n}.</p>`}
+    ${list}
+    <h4 class="sub">Карты агента</h4>
+    <div class="seg wide dk-tabs">${tabs}</div>
+    <div class="hs-grid dk-pool">${pool.map((c) => { const k = cnt(c.id), max = k >= DECK_MAX_COPIES || full;
+      return `<div class="dk-card"><button class="hc f-${c.side} ${max ? 'max' : ''}" data-act="hs-deck-add" data-v="${c.id}">${cardFace(c, false, c.cost, side)}${k ? `<em class="dk-n">×${k}</em>` : ''}</button><button class="dk-i" data-act="hs-cardinfo" data-v="${c.id}" aria-label="Подробнее">i</button></div>`; }).join('')}</div>
+  </main>${info}`;
+}
+
 function catalogHTML() {
   const shown = HCARDS.filter((c) => c.cls !== 'token' && !(c.kind === 'unit' && c.cost === 0));
   const groups: [string, HCard[]][] = [
@@ -1470,7 +1542,7 @@ async function onNet(m: S2C) {
     case 'me':
       L.me = m.me; L.season = m.season;
       if (S.phase === 'rating' && !L.history) { net.send({ t: 'profile' }); net.send({ t: 'top' }); net.send({ t: 'friends' }); }
-      if (L.pendingJoin) { net.send({ t: 'duel_join', code: L.pendingJoin, agents: { T: S.setup.T, CT: S.setup.CT } }); L.pendingJoin = null; }
+      if (L.pendingJoin) { net.send({ t: 'duel_join', code: L.pendingJoin, agents: agentsWithDecks(S.setup.T, S.setup.CT) }); L.pendingJoin = null; }
       break;
     case 'queued': L.queued = true; L.qsize = m.size; if (m.lo !== undefined) L.range = { lo: m.lo, hi: m.hi!, since: m.since! }; break;
     case 'profile': L.history = m.history; break;
@@ -1707,7 +1779,7 @@ function agentPickHTML() {
 /** Выбранные герои одной строкой; список агентов раскрывается по нажатию. */
 function agentsLine() {
   const st = S.setup, L = S.lobby;
-  const one = (side: Side) => { const a = agent(st[side]); return `<span class="ol-ag f-${side}"><span class="portrait xs">${agentArt(side, a.id)}</span><span><small>${side}</small><b>${esc(a.name)}</b></span></span>`; };
+  const one = (side: Side) => { const a = agent(st[side]); return `<span class="ol-ag f-${side}"><span class="portrait xs">${agentArt(side, a.id)}</span><span><small>${side}${getDeck(a.id) ? ' · своя колода' : ''}</small><b>${esc(a.name)}</b></span></span>`; };
   return `<button class="ol-agents ${L.agentsOpen ? 'open' : ''}" data-act="hs-agents">${one('CT')}${one('T')}<em>${L.agentsOpen ? 'Скрыть ▴' : 'Сменить ▾'}</em></button>`;
 }
 function lobbyHTML() {
@@ -1886,7 +1958,7 @@ export function hsInvite(accept: boolean) {
   S.lobby.invite = null;
   track('invite_answer', { accept });
   if (accept) { hooks.enter(); openLobby(); }
-  net.send({ t: 'invite_answer', code: v.code, accept, agents: { T: S.setup.T, CT: S.setup.CT } });
+  net.send({ t: 'invite_answer', code: v.code, accept, agents: agentsWithDecks(S.setup.T, S.setup.CT) });
   hooks.render();
 }
 
@@ -2041,7 +2113,7 @@ function playFlow(cardId: string): string | null {
 const playAllow = (cardId: string) => [handSel(handUid(cardId)) ?? '', '.hs-pv [data-act="hs-play"]', '.hs-slot', '.tgt'];
 
 const TUT_STEPS: TutStep[] = [
-  { id: 'hello', anyTurn: true, info: true, text: 'Добро пожаловать в «Клатч»! Это карточный бой по CS2: вы — Phoenix за T, против вас SWAT. Снимите герою соперника всё здоровье или взорвите бомбу.',
+  { id: 'hello', anyTurn: true, info: true, text: 'Добро пожаловать в «Клатч»! Это карточный бой по CS2: вы — Phoenix за T, против вас SWAT. Снимите герою соперника всё здоровье или взорвите бомбу. У CT задача обратная: обезвредить бомбу или добить вашего героя.',
     target: () => null, done: () => false },
   { id: 'mull', anyTurn: true, text: 'Это ваша стартовая рука. Неудобные карты можно заменить, но сейчас рука хорошая. Нажмите «Оставить и начать».',
     target: () => '[data-act="hs-keep"]', done: () => S.phase !== 'mull' },
@@ -2080,6 +2152,8 @@ const TUT_STEPS: TutStep[] = [
     target: () => null, done: () => false },
   { id: 'shop', info: true, text: () => `Бай-меню под деньгами: за ${money(HS.shopCost)} выбрать 1 из ${HS.shopChoice} карт, каждая следующая покупка за ход дороже на ${money(HS.shopCost)}. А в начале хода вы открываете 2 верхние карты колоды и берёте одну.`,
     target: () => '.hs-shopbtn', done: () => false },
+  { id: 'eco', info: true, text: () => `Эко раунд, как в CS: если за ход ничего не сыграть — ни карты, ни бай-меню, ни силы героя, — вместо «Конец хода» загорится золотая кнопка «Эко раунд». На выбор: +${HS.ecoCards} карты сразу или +${money(HS.ecoCash)} к следующему ходу вместо переноса. С первого хода эко нельзя.`,
+    target: () => '.hs-end', done: () => false },
   { id: 'power', text: 'Кнопка справа от портрета — сила героя, раз в ход. У Phoenix это нож: герой бьёт сильнее. Нажмите её.',
     target: () => '[data-act="hs-power"]', done: () => me0().powerUsed, need: () => !!powerTargets(S.s!, 0) },
   { id: 'hero', text: () => (S.sel?.k === 'atk' ? 'Выберите цель для удара героем.' : 'Теперь ударьте ножом: нажмите своего героя, затем цель.'),
@@ -2094,7 +2168,7 @@ const TUT_STEPS: TutStep[] = [
     target: () => null, done: () => false },
   { id: 'vet', info: true, text: 'Боец, который убил, становится ветераном ★ и получает бонус своего класса. Убили бойца, который ещё не стрелял, — его оружие уходит вам в руку трофеем, бесплатно. Последний боец против двух и больше — клатч: бьёт на 2 сильнее.',
     target: () => null, done: () => false },
-  { id: 'sig', info: true, text: 'У каждого агента своя сила героя и две фирменные карты — они лежат только в его колоде. Phoenix: «Подрывник» взрывается при гибели, «Быстрая закладка» ускоряет бомбу. Все карты с описанием — в меню, «Все карты».',
+  { id: 'sig', info: true, text: 'У каждого агента своя сила героя и две фирменные карты — они лежат только в его колоде. Phoenix: «Подрывник» взрывается при гибели, «Быстрая закладка» ускоряет бомбу. Все карты с описанием — в меню, «Все карты», а в «Колодах» можно собрать свою колоду.',
     target: () => null, done: () => false },
   { id: 'free', info: true, text: 'Основы вы знаете! Дальше играйте сами. Нажмите любую карту или бойца, чтобы прочитать подробности. Удачи!',
     target: () => null, done: () => false },

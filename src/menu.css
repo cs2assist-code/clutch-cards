@@ -89,11 +89,11 @@
 .km-q.done em { color: var(--km-go); } .km-q.done em::before { content: '✓ '; }
 
 /* Нижнее меню */
-.km-nav { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.km-nav { display: grid; grid-template-columns: repeat(5, 1fr); gap: 5px; }
 .km-nav button { display: grid; justify-items: center; gap: 6px; padding: 11px 6px; border-radius: 3px; color: var(--km-muted);
   background: var(--km-panel); border: 1px solid var(--km-line); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); transition: color .15s, border-color .15s; }
 .km-nav .ico { width: 20px; height: 20px; }
-.km-nav b { font: 500 11.5px var(--km-body); color: var(--km-fg); }
+.km-nav b { font: 500 11px var(--km-body); color: var(--km-fg); white-space: nowrap; }
 .km-nav button:hover { color: var(--km-fg); border-color: rgba(255,255,255,.2); }
 .km button:focus-visible { outline: 2px solid var(--km-ct); outline-offset: 2px; }
 

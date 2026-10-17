@@ -21,6 +21,7 @@ import { createHmac, randomInt } from 'node:crypto';
 import { readFileSync, statSync } from 'node:fs';
 import { corsPreflight, initAnalytics, statsCsv, statsPage } from './analytics';
 import { AGENTS, MAPS } from '../src/game/cards';
+import { validDeck } from '../src/hs/cards';
 import type { Side } from '../src/game/types';
 import { canEco, choose, eco, endTurn, mulligan, newGame, setRng, startGame, type HState, type PI } from '../src/hs/engine';
 import { apply } from '../src/hs/ai';
@@ -177,7 +178,12 @@ const sideOther = (x: Side): Side => (x === 'T' ? 'CT' : 'T');
 function validAgents(a: unknown): Agents | null {
   const o = a as Agents | undefined;
   const ok = (id: unknown, side: Side) => AGENTS.some((x) => x.id === id && x.side === side);
-  return o && ok(o.T, 'T') && ok(o.CT, 'CT') ? { T: o.T, CT: o.CT } : null;
+  if (!o || !ok(o.T, 'T') || !ok(o.CT, 'CT')) return null;
+  const r: Agents = { T: o.T, CT: o.CT };
+  // Свои колоды: берём, только если собраны по правилам (иначе — колода агента по умолчанию)
+  if (validDeck(o.T, o.dT)) r.dT = [...o.dT];
+  if (validDeck(o.CT, o.dCT)) r.dCT = [...o.dCT];
+  return r;
 }
 
 function createRoom(a: Omit<Seat, 'mullDone'>, b: Omit<Seat, 'mullDone'>, ranked: boolean) {
@@ -286,7 +292,8 @@ function doBan(r: Room, p: PI, map: string) {
 function startGameIn(r: Room) {
   if (!r.sidesSet) { const tSeat = randomInt(0, 2) as PI; r.sides = tSeat === 0 ? ['T', 'CT'] : ['CT', 'T']; }
   r.agents = [r.seats[0].agents[r.sides[0]], r.seats[1].agents[r.sides[1]]];
-  r.s = newGame(r.agents, r.sides, r.map);
+  const deckOf = (p: PI) => (r.sides[p] === 'T' ? r.seats[p].agents.dT : r.seats[p].agents.dCT);
+  r.s = newGame(r.agents, r.sides, r.map, [deckOf(0), deckOf(1)]);
   r.s.log = [];
   r.phase = 'mull';
   setDeadline(r, MULL_MS + 3000, () => { for (const p of [0, 1] as PI[]) if (!r.seats[p].mullDone) doMull(r, p, []); });

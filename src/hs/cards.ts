@@ -298,6 +298,23 @@ export function agentDeck(agentId: string, rnd: () => number = Math.random): str
   return deck.slice(0, DECK_SIZE);
 }
 
+/** Своя колода: из каких карт её можно собрать (то же, что в бай-меню агента). */
+export function deckPool(agentId: string): string[] {
+  return shopPool(agentId).filter((id) => BY_ID.get(id)?.kind !== 'bomb');
+}
+export const DECK_MAX_COPIES = 2;
+/** Своя колода годится: ровно DECK_SIZE карт из пула агента, не больше 2 копий каждой. */
+export function validDeck(agentId: string, deck: unknown): deck is string[] {
+  if (!Array.isArray(deck) || deck.length !== DECK_SIZE) return false;
+  const pool = new Set(deckPool(agentId)), n = new Map<string, number>();
+  for (const id of deck) {
+    if (typeof id !== 'string' || !pool.has(id)) return false;
+    n.set(id, (n.get(id) ?? 0) + 1);
+    if (n.get(id)! > DECK_MAX_COPIES) return false;
+  }
+  return true;
+}
+
 /** Что агент может купить в бай-меню: арсенал, фирменные карты и все общие карты стороны. */
 export function shopPool(agentId: string): string[] {
   const a = AGENTS.find((x) => x.id === agentId) ?? AGENTS[0];

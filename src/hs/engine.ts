@@ -3,7 +3,7 @@
 // оружие погибших можно подобрать, засады лежат рубашкой вверх.
 // Чистая логика без DOM: интерфейс и бот читают события из s.log.
 import type { Side } from '../game/types';
-import { agentDeck, COUNTER, shopPool, styleOf, hcard, PIERCE_CLS, POWERS, type HClass, type HTarget, type KW } from './cards';
+import { agentDeck, validDeck, COUNTER, shopPool, styleOf, hcard, PIERCE_CLS, POWERS, type HClass, type HTarget, type KW } from './cards';
 
 export const HS = {
   heroHp: 50,
@@ -163,10 +163,11 @@ export const foe = (p: PI): PI => (p === 0 ? 1 : 0);
 
 // ─────────────────────────── Начало игры ───────────────────────────
 /** Новая игра: agents[i] — агент игрока i. T ходит первым. */
-export function newGame(agents: [string, string], sides: [Side, Side], map = 'dust2'): HState {
+/** decks[i] — своя колода игрока i (если собрана и годится), иначе колода агента по умолчанию. */
+export function newGame(agents: [string, string], sides: [Side, Side], map = 'dust2', decks?: [string[] | null | undefined, string[] | null | undefined]): HState {
   const mk = (i: PI): HPlayer => ({
     hero: { hp: maxHp(agents[i]), armor: sides[i] === 'CT' ? HS.ctArmor : 0, atk: 0, attacked: false, agent: agents[i], side: sides[i] },
-    hand: [], deck: shuffle(agentDeck(agents[i], rnd)), board: [], traps: [], money: 0, bonus: 0, turns: 0, powerUsed: false, shopUsed: 0, choice: null, pool: shopPool(agents[i]), fatigue: 0, kills: 0, lossStreak: 0, entry: false, saved: false, played: false, ecos: 0,
+    hand: [], deck: shuffle(validDeck(agents[i], decks?.[i]) ? [...decks![i]!] : agentDeck(agents[i], rnd)), board: [], traps: [], money: 0, bonus: 0, turns: 0, powerUsed: false, shopUsed: 0, choice: null, pool: shopPool(agents[i]), fatigue: 0, kills: 0, lossStreak: 0, entry: false, saved: false, played: false, ecos: 0,
   });
   const first: PI = sides[0] === 'T' ? 0 : 1;
   const s: HState = { p: [mk(0), mk(1)], turn: first, first, winner: null, reason: '', log: [], seq: 0, turnNo: 0, map };
