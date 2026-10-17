@@ -8,7 +8,8 @@ import { sfx, soundOn, toggleSound, unlock as unlockSound } from './sound';
 import { toggleVoice, voiceEnabled } from './voice';
 import { analyticsOn, toggleAnalytics, track } from './analytics';
 import { loadDecks } from './hs/decks';
-import { hsClick, hsInvite, hsInviteHTML, hsLevelBadge, hsLevelProgress, hsProfile, hsHTML, hsInit, hsJoinDuel, hsOpen } from './hs/ui';
+import { musicEnabled, refreshMusic, setMusic, toggleMusic, unlockMusic } from './music';
+import { hsClick, hsMusic, hsInvite, hsInviteHTML, hsLevelBadge, hsLevelProgress, hsProfile, hsHTML, hsInit, hsJoinDuel, hsOpen } from './hs/ui';
 import { loadQuests, questView } from './quests';
 import { startDuelCode } from './online/client';
 import { agentArt, cssUrl, esc } from './art';
@@ -67,6 +68,7 @@ function menuHTML() {
     </header>
     ${ui.settingsOpen ? `<div class="km-settings">
       <button class="toggle ${soundOn() ? 'on' : ''}" data-act="sound" aria-pressed="${soundOn()}"><i></i>Звуки</button>
+      <button class="toggle ${musicEnabled() ? 'on' : ''}" data-act="music" aria-pressed="${musicEnabled()}"><i></i>Музыка</button>
       <button class="toggle ${voiceEnabled() ? 'on' : ''}" data-act="voice" aria-pressed="${voiceEnabled()}"><i></i>Радиокоманды</button>
       <button class="toggle ${analyticsOn() ? 'on' : ''}" data-act="analytics" aria-pressed="${analyticsOn()}"><i></i>Анонимная статистика для разработчика</button>
       <small class="note">Без имени и Telegram-ID: только какие шаги проходят игроки.</small>
@@ -144,7 +146,7 @@ function showToast(text: string, ms = 1400) {
 }
 
 // ─────────────────────────── Нажатия ───────────────────────────
-root.addEventListener('pointerdown', () => unlockSound());
+root.addEventListener('pointerdown', () => { unlockSound(); unlockMusic(); });
 root.addEventListener('click', (ev) => {
   const actEl = (ev.target as HTMLElement).closest<HTMLElement>('[data-act]');
   if (!actEl) return;
@@ -163,7 +165,8 @@ root.addEventListener('click', (ev) => {
     case 'rating': ui.screen = 'hs'; setBackButton(() => go('menu')); hsOpen('rating'); return;
     case 'tutorial': ui.screen = 'hs'; setBackButton(() => go('menu')); hsClick('hs-tutorial', actEl); return;
     case 'settings': ui.settingsOpen = !ui.settingsOpen; return render();
-    case 'sound': toggleSound(); if (soundOn()) sfx.click(); return render();
+    case 'sound': toggleSound(); if (soundOn()) sfx.click(); refreshMusic(); return render();
+    case 'music': toggleMusic(); return render();
     case 'voice': toggleVoice(); return render();
     case 'analytics': toggleAnalytics(); return render();
     case 'askreset': ui.confirmReset = true; return render();
@@ -179,6 +182,8 @@ function render() {
   html += hsInviteHTML();
   if (ui.toast) html += `<div class="toast">${esc(ui.toast)}</div>`;
   root.innerHTML = html;
+  const mu = ui.screen === 'hs' ? hsMusic() : { track: 'menu', game: false };
+  setMusic(mu.track, mu.game);
   const sc = root.querySelector('.scroll');
   if (sc) sc.scrollTop = scroll;
 }

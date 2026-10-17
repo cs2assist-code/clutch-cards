@@ -21,8 +21,10 @@ shot = {f.name: f'data:{MIME[f.suffix.lower()]};base64,' + base64.b64encode(f.re
 # Картинки нужны сразу. Голоса и выстрелы — JSON-блоки в конце файла: браузер их не выполняет как скрипт,
 # а разбирает только при первом обращении (в начале партии), поэтому меню открывается быстрее.
 lazy = '''Object.defineProperty(window,'__%s',{configurable:true,get(){var e=document.getElementById('__%s');var v=e?JSON.parse(e.textContent):undefined;Object.defineProperty(window,'__%s',{value:v});return v}});'''
-pre = '<script>window.__CARD_IMG=' + json.dumps(imgs) + ';' + lazy % ('VO', 'vo', 'VO') + lazy % ('SHOT', 'shot', 'SHOT') + '</script>'
-post = '<script type="application/json" id="__vo">' + json.dumps(vo).replace('</', '<\\/') + '</script><script type="application/json" id="__shot">' + json.dumps(shot).replace('</', '<\\/') + '</script>'
+mus_dir = pathlib.Path('public/snd/music')
+music = {f.stem: 'data:audio/mpeg;base64,' + base64.b64encode(f.read_bytes()).decode() for f in sorted(mus_dir.glob('*.mp3'))} if mus_dir.exists() else {}
+pre = '<script>window.__CARD_IMG=' + json.dumps(imgs) + ';' + lazy % ('VO', 'vo', 'VO') + lazy % ('SHOT', 'shot', 'SHOT') + (lazy % ('MUSIC', 'music', 'MUSIC') if music else '') + '</script>'
+post = ('<script type="application/json" id="__music">' + json.dumps(music) + '</script>' if music else '') + '<script type="application/json" id="__vo">' + json.dumps(vo).replace('</', '<\\/') + '</script><script type="application/json" id="__shot">' + json.dumps(shot).replace('</', '<\\/') + '</script>'
 html = pathlib.Path('index.html').read_text()
 html = html.replace('<script type="module" src="/src/main.ts"></script>', pre + '<script type="module">' + js.replace('</script', '<\\/script') + '</script>' + post)
 html = html.replace('</head>', '<style>' + css + '</style>\n</head>')

@@ -974,6 +974,11 @@ export function hsClick(a: string, el: HTMLElement): boolean {
 }
 
 // ─────────────────────────── Разметка ───────────────────────────
+/** Какая музыка нужна на экране режима: фон карты во время партии, иначе — тема меню. */
+export function hsMusic(): { track: string; game: boolean } {
+  const inGame = !!S.s && (S.phase === 'mull' || S.phase === 'play' || S.phase === 'gameover' || S.phase === 'over');
+  return inGame ? { track: `map_${S.map}`, game: S.phase === 'play' || S.phase === 'mull' } : { track: 'menu', game: false };
+}
 export function hsHTML(): string {
   if (S.phase === 'lobby') return lobbyHTML();
   if (S.phase === 'veto') return vetoHTML();
