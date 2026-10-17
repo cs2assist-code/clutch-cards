@@ -38,6 +38,8 @@ export function prizePlaces<T extends { games: number }>(rows: T[], minGames: nu
   for (const r of rows) { if (r.games >= minGames && place < 10) m.set(r, ++place); }
   return m;
 }
+export type ReportReason = 'cheat' | 'toxic' | 'afk' | 'name' | 'other';
+export const REPORT_REASONS: ReportReason[] = ['cheat', 'toxic', 'afk', 'name', 'other'];
 /** Игрок в списках друзей и недавних соперников. */
 export interface PeerRow { id: string; name: string; rating: number; games: number; online: boolean; inGame: boolean; friend: boolean; at?: number; win?: boolean }
 
@@ -68,6 +70,7 @@ export type C2S =
   | { t: 'invite'; id: string; agents: Agents }
   | { t: 'invite_answer'; code: string; accept: boolean; agents?: Agents }
   | { t: 'rematch'; agents: Agents }
+  | { t: 'report'; id: string; reason: ReportReason; note?: string }
   | { t: 'ping' };
 
 // ── Сервер → клиент ──
@@ -92,6 +95,7 @@ export type S2C =
   | { t: 'invited'; code: string; from: { id: string; name: string; rating: number } }
   | { t: 'invite_status'; state: 'sent' | 'declined' | 'offline' | 'busy' | 'expired'; name: string }
   | { t: 'rematch'; state: 'wait' | 'offer' | 'gone' }
+  | { t: 'report_ok'; dup: boolean }
   | { t: 'top'; rows: { id?: string; name: string; rating: number; games: number; wins: number; league: string }[]; season: string; prizes?: SeasonPrizes }
   | { t: 'sync'; phase: 'veto' | 'mull' | 'play'; view?: HState; deadline: number; map?: string; side?: Side; myAgent?: string; oppAgent?: string; mullDone?: boolean }
   | { t: 'err'; msg: string }

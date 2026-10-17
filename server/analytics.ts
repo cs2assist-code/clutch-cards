@@ -186,6 +186,16 @@ small,.m{color:#8b95a3}table{border-collapse:collapse;width:100%;max-width:820px
   const social = [['Добавили в друзья', 'friend_add'], ['Вызвали на дуэль', 'invite_send'], ['Ответили на вызов', 'invite_answer'], ['Реванш', 'rematch'], ['Открыли «Подробнее» у карты', 'pv_more'], ['Открыли рейтинг', 'rating_open']];
   out.push(table('Кнопки и соцфункции', social.map(([n, e]) => tr([n, evs(e).length, `${usersWith(e).size} игроков`])).join('')));
   out.push(table('Платформы', counter(evs('app_open'), (p) => String(p.pf ?? '?')).map(([k, v]) => tr([esc(k), v])).join('')));
+  // Жалобы на игроков за период: сколько разных игроков пожаловались и на что
+  try {
+    const REASON_REP: Record<string, string> = { cheat: 'читы', toxic: 'оскорбления', afk: 'бездействие', name: 'имя', other: 'другое' };
+    const reps = db.query(`SELECT r.target AS id, p.name AS name, COUNT(DISTINCT r.reporter) AS who, GROUP_CONCAT(r.reason) AS reasons, MAX(r.note) AS note
+      FROM reports r LEFT JOIN players p ON p.id = r.target WHERE r.at > ? GROUP BY r.target ORDER BY who DESC LIMIT 30`).all(since) as { id: string; name: string; who: number; reasons: string; note: string | null }[];
+    if (reps.length) out.push(table('Жалобы на игроков', tr(['<small>игрок</small>', '<small>пожаловались</small>', '<small>причины</small>', '<small>комментарий</small>']) + reps.map((r) => {
+      const c = new Map<string, number>(); for (const x of r.reasons.split(',')) c.set(x, (c.get(x) ?? 0) + 1);
+      return tr([`${esc(r.name ?? '?')} <small>${esc(r.id)}</small>`, r.who, esc([...c].map(([k, v]) => `${REASON_REP[k] ?? k} ×${v}`).join(', ')), esc(r.note ?? '')]);
+    }).join(''), 'Одна жалоба от игрока на игрока в сутки. Решение (бан, сброс рейтинга) — вручную в базе.'));
+  } catch { /* таблицы ещё нет */ }
   const errs = counter(evs('js_error'), (p) => `${p.msg} · ${p.at}`).slice(0, 15);
   if (errs.length) out.push(table('Ошибки JS', errs.map(([k, v]) => tr([esc(k), v])).join('')));
   return out.join('');

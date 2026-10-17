@@ -40,6 +40,9 @@ A.tx({ t: 'rematch', agents: AG }); console.log('A rematch', (await A.wait('rema
 B.tx({ t: 'rematch', agents: AG }); const r2 = await A.wait('found'); await B.wait('found'); console.log('rematch found', r2.opp.name);
 A.tx({ t: 'resign' }); await A.wait('over');
 A.tx({ t: 'friends' }); const fr2 = await A.wait('friends'); console.log('recent', fr2.recent.map((r: M) => r.name));
-const ok = fr.friends.length === 1 && pl.friend && fa.ranked === false && fa.opp.id === mb.me.id && r2.opp.name.startsWith('bob') && fr2.recent.some((r: M) => r.name.startsWith('bob'));
+A.tx({ t: 'report', id: mb.me.id, reason: 'toxic', note: 'тест' }); const rp1 = await A.wait('report_ok');
+A.tx({ t: 'report', id: mb.me.id, reason: 'cheat' }); const rp2 = await A.wait('report_ok');
+console.log('report', rp1.dup, rp2.dup);
+const ok = !rp1.dup && rp2.dup && fr.friends.length === 1 && pl.friend && fa.ranked === false && fa.opp.id === mb.me.id && r2.opp.name.startsWith('bob') && fr2.recent.some((r: M) => r.name.startsWith('bob'));
 console.log(ok ? 'OK' : 'FAIL');
 process.exit(ok ? 0 : 1);

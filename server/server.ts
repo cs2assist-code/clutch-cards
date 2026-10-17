@@ -27,7 +27,7 @@ import { canEco, choose, eco, endTurn, mulligan, newGame, setRng, startGame, typ
 import { apply } from '../src/hs/ai';
 import { isMove, knifeFor, MOVES, newKnife, resolveKnife, type KnifeRound, type KnifeState, type Move } from '../src/hs/knife';
 import {
-  type HistRow, type PeerRow, type Prize, type SeasonPrizes, prizePlaces, HIDDEN, leagueOf, levelOf, MIN_RATING, rotateAction, rotateEv, unrotateAction, validAction, viewFor,
+  REPORT_REASONS, type HistRow, type PeerRow, type Prize, type SeasonPrizes, prizePlaces, HIDDEN, leagueOf, levelOf, MIN_RATING, rotateAction, rotateEv, unrotateAction, validAction, viewFor,
   type Agents, type C2S, type PlayerInfo, type S2C, type StepAction,
 } from '../src/online/protocol';
 
@@ -58,6 +58,8 @@ CREATE TABLE IF NOT EXISTS matches (id INTEGER PRIMARY KEY, at INTEGER NOT NULL,
   ra_before REAL, rb_before REAL, ra_after REAL, rb_after REAL);
 CREATE INDEX IF NOT EXISTS players_top ON players (season, rating DESC);
 CREATE TABLE IF NOT EXISTS friends (a TEXT NOT NULL, b TEXT NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (a, b));
+CREATE TABLE IF NOT EXISTS reports (id INTEGER PRIMARY KEY, at INTEGER NOT NULL, reporter TEXT NOT NULL, target TEXT NOT NULL, reason TEXT NOT NULL, note TEXT);
+CREATE INDEX IF NOT EXISTS reports_target ON reports (target, at);
 CREATE TABLE IF NOT EXISTS season_results (season INTEGER NOT NULL, place INTEGER NOT NULL, player TEXT NOT NULL, name TEXT NOT NULL, rating REAL NOT NULL, games INTEGER NOT NULL, prize TEXT, PRIMARY KEY (season, place));
 CREATE INDEX IF NOT EXISTS matches_a ON matches (a, id); CREATE INDEX IF NOT EXISTS matches_b ON matches (b, id);`);
 
@@ -526,6 +528,16 @@ function onMessage(ws: WS, m: C2S) {
       }
       send(online.get(rm.opp), { t: 'rematch', state: 'offer' });
       return send(ws, { t: 'rematch', state: 'wait' });
+    }
+    case 'report': {
+      // Жалоба на игрока: одна на пару в сутки, не больше 10 в сутки от одного игрока
+      const to = String(m.id ?? ''), reason = String(m.reason ?? '');
+      if (!to || to === u.id || !REPORT_REASONS.includes(reason as never) || !db.query('SELECT 1 FROM players WHERE id = ?').get(to)) return send(ws, { t: 'err', msg: 'Жалобу не отправить' });
+      const day = Date.now() - 86_400_000;
+      const dup = !!db.query('SELECT 1 FROM reports WHERE reporter = ? AND target = ? AND at > ?').get(u.id, to, day);
+      const many = (db.query('SELECT COUNT(*) AS n FROM reports WHERE reporter = ? AND at > ?').get(u.id, day) as { n: number }).n >= 10;
+      if (!dup && !many) db.run('INSERT INTO reports (at, reporter, target, reason, note) VALUES (?, ?, ?, ?, ?)', [Date.now(), u.id, to, reason, String(m.note ?? '').slice(0, 300) || null]);
+      return send(ws, { t: 'report_ok', dup: dup || many });
     }
     case 'duel_create': {
       const agents = validAgents(m.agents);

@@ -18,7 +18,7 @@ import {
 import { apply, botEnd, botMulligan, botStep, legalActions, type Action } from './ai';
 import { boardEmblem, boardScene, boardVars } from './boards';
 import * as net from '../online/client';
-import { LEVELS, levelOf, prizePlaces, type HistRow, type PeerRow, type PlayerInfo, type S2C, type SeasonPrizes } from '../online/protocol';
+import { LEVELS, levelOf, prizePlaces, REPORT_REASONS, type ReportReason, type HistRow, type PeerRow, type PlayerInfo, type S2C, type SeasonPrizes } from '../online/protocol';
 import { haptic } from '../telegram';
 import { questBump, type QuestDef, type QuestKind } from '../quests';
 import { shareResult } from '../share';
@@ -56,6 +56,7 @@ const S = {
     invite: null as null | { code: string; from: { id: string; name: string; rating: number } }, invNote: '', rematch: '' as '' | 'wait' | 'offer' | 'gone', agentsOpen: false },
   radioOpen: false,
   pvMore: false,
+  report: null as null | { id: string; name: string; reason: ReportReason | '' },
   deck: null as null | { agent: string; cards: string[]; filter: 'all' | 'unit' | 'spell' | 'trap'; saved: boolean },   // в превью карты показаны подробности (классы, броня, расшифровка свойств)
   /** Обучающий матч: какие подсказки уже показаны. */
   tut: null as null | TutState,
@@ -874,6 +875,15 @@ export function hsClick(a: string, el: HTMLElement): boolean {
     case 'hs-deck-save': if (S.deck && validDeck(S.deck.agent, S.deck.cards)) { setDeck(S.deck.agent, S.deck.cards); S.deck.saved = true; track('deck_save', { agent: S.deck.agent }); fx.banner('Колода сохранена', 'defuse', 1000); sfx.buy(); } else sfx.deny(); break;
     case 'hs-deck-reset': if (S.deck) { setDeck(S.deck.agent, null); S.deck = null; S.phase = 'decks'; fx.banner('Будет играть стандартная колода', 'info', 1200); } break;
     case 'hs-deck-back': S.deck = null; S.phase = 'decks'; S.info = null; break;
+    case 'hs-report': S.report = { id: el.dataset.id!, name: el.dataset.name ?? '', reason: '' }; break;
+    case 'hs-report-reason': if (S.report) S.report.reason = el.dataset.v as ReportReason; break;
+    case 'hs-report-cancel': S.report = null; break;
+    case 'hs-report-send': if (S.report?.reason) {
+      const note = (hooks.root.querySelector<HTMLTextAreaElement>('#repnote')?.value ?? '').trim().slice(0, 300);
+      if (net.send({ t: 'report', id: S.report.id, reason: S.report.reason, ...(note ? { note } : {}) })) track('report', { reason: S.report.reason });
+      else fx.banner('Нет связи с сервером', 'info', 1200);
+      S.report = null;
+    } break;
     case 'hs-pvmore': S.pvMore = !S.pvMore; if (S.pvMore) track('pv_more'); break;
     case 'hs-help': S.help = true; break;
     case 'hs-closehelp': S.help = false; break;
@@ -1548,6 +1558,7 @@ async function onNet(m: S2C) {
     case 'profile': L.history = m.history; break;
     case 'duel_code': L.duel = m.code; break;
     case 'friends': L.friends = m.friends; L.recent = m.recent; break;
+    case 'report_ok': fx.banner(m.dup ? 'Жалоба уже отправлена — спасибо' : 'Жалоба отправлена — спасибо', 'info', 1500); break;
     case 'player': L.player = m; break;
     case 'invited':
       if (S.on && S.phase !== 'over') return;   // в матче вызовы не показываем (сервер и так отвечает «занят»)
@@ -1926,6 +1937,20 @@ function friendsHTML() {
   return `<h4 class="sub">Друзья</h4>${L.invNote ? `<p class="note">${esc(L.invNote)}</p>` : ''}${fr}
     ${rec.length ? `<h4 class="sub">Недавние соперники</h4><ul class="pr-list">${rec.map(peerHTML).join('')}</ul>` : ''}`;
 }
+const REPORT_RU: Record<ReportReason, string> = { cheat: 'Читы или баг-абуз', toxic: 'Оскорбления в рации', afk: 'Бездействует, тянет время', name: 'Неприемлемое имя', other: 'Другое' };
+/** Окно жалобы на игрока. */
+function reportHTML() {
+  const r = S.report;
+  if (!r) return '';
+  return `<div class="hs-ov rep-ov"><div class="hs-ovbox rep-box">
+    <h3>Пожаловаться${r.name ? ` на ${esc(r.name)}` : ''}</h3>
+    <p class="note">Жалобы смотрит модератор. Ложные жалобы не помогают — отправляйте, только если правда что-то не так.</p>
+    <div class="rep-list">${REPORT_REASONS.map((k) => `<button class="${r.reason === k ? 'on' : ''}" data-act="hs-report-reason" data-v="${k}">${REPORT_RU[k]}</button>`).join('')}</div>
+    <textarea id="repnote" maxlength="300" rows="2" placeholder="Комментарий (необязательно)"></textarea>
+    <div class="rep-btns"><button class="ghost" data-act="hs-report-cancel">Отмена</button><button class="primary" data-act="hs-report-send" ${r.reason ? '' : 'disabled'}>Отправить</button></div>
+  </div></div>`;
+}
+
 function playerHTML() {
   const L = S.lobby, p = L.player;
   const head = `<header class="rm-head"><button class="ghost sm" data-act="hs-player-back">← Назад</button><span class="rm-title">Профиль</span><span></span></header>`;
@@ -1941,9 +1966,10 @@ function playerHTML() {
     <div class="pr-acts">
       <button class="primary" data-act="hs-invite" data-id="${esc(me.id)}" ${p.online ? '' : 'disabled'}>Вызвать на дуэль</button>
       ${p.friend ? `<button class="ghost" data-act="hs-friend-del" data-id="${esc(me.id)}">Убрать из друзей</button>` : `<button class="ghost" data-act="hs-friend-add" data-id="${esc(me.id)}">Добавить в друзья</button>`}
+      <button class="ghost sm rep-btn" data-act="hs-report" data-id="${esc(me.id)}" data-name="${esc(me.name)}">⚑ Пожаловаться</button>
     </div>${L.invNote ? `<p class="note">${esc(L.invNote)}</p>` : ''}`}
     <h4 class="sub">Последние матчи</h4>${p.history.length ? histList(p.history, false) : '<p class="note">Пока нет рейтинговых матчей.</p>'}
-  </main>`;
+  </main>${reportHTML()}`;
 }
 /** Окно «вас вызывают на дуэль» — поверх любого экрана, включая главное меню. */
 export function hsInviteHTML(): string {
@@ -2008,9 +2034,9 @@ function onlineOverHTML() {
     ${rematchBtn()}
     <button class="ghost" data-act="hs-share">Поделиться</button>
     <button class="ghost" data-act="hs-again">${o.ranked ? 'Ещё рейтинговая' : 'В лобби'}</button>
-    ${o.opp.id ? `<button class="ghost sm" data-act="hs-friend-add" data-id="${esc(o.opp.id)}">+ ${esc(o.opp.name)} в друзья</button>` : ''}
+    ${o.opp.id ? `<div class="ov-row"><button class="ghost sm" data-act="hs-friend-add" data-id="${esc(o.opp.id)}">+ ${esc(o.opp.name)} в друзья</button><button class="ghost sm rep-btn" data-act="hs-report" data-id="${esc(o.opp.id)}" data-name="${esc(o.opp.name)}">⚑ Пожаловаться</button></div>` : ''}
     <button class="ghost" data-act="hs-menu">В меню</button>
-  </div></div>`;
+  </div></div>${reportHTML()}`;
 }
 
 // ─────────────────────────── Задания дня ───────────────────────────

@@ -534,3 +534,12 @@ h4.sub, .sub { font: 600 11px var(--font-body) !important; letter-spacing: .18em
 .dk .dk-pool { display: grid; grid-template-columns: repeat(auto-fill, minmax(66px, 1fr)); gap: 16px 10px; padding: 8px 6px; }
 .dk .dk-pool .dk-card { display: block; }
 .dk .dk-pool .hc { width: 100%; height: auto; aspect-ratio: 68 / 96; position: relative; }
+
+/* ── Жалоба ── */
+.rep-list { display: grid; gap: 6px; margin: 10px 0; }
+.rep-list button { text-align: left; padding: 9px 12px; border-radius: 3px; background: #161b22; border: 1px solid rgba(255,255,255,.12); color: inherit; font: inherit; cursor: pointer; }
+.rep-list button.on { border-color: #ff6b5a; background: rgba(255,90,70,.12); }
+.rep-box textarea { width: 100%; box-sizing: border-box; background: #0f1318; color: inherit; border: 1px solid rgba(255,255,255,.15); border-radius: 3px; padding: 8px; font: inherit; resize: vertical; }
+.rep-btns { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; }
+.rep-btn { color: #ff9a8a !important; }
+.ov-row { display: flex; gap: 6px; justify-content: center; flex-wrap: wrap; }
