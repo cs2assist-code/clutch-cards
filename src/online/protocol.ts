@@ -3,6 +3,7 @@
 //  • повёрнутый — сам игрок всегда под индексом 0 (интерфейс так и рисует: «я» внизу);
 //  • без чужой информации — карты в руке и колоде соперника, его засады и открытый выбор заменены «рубашками».
 import type { CustomSpec } from '../hs/forge';
+import type { LifeStats, MedalRow } from './medals';
 import type { Action } from '../hs/ai';
 import type { Ev, HState, PI } from '../hs/engine';
 import type { Side } from '../game/types';
@@ -44,7 +45,8 @@ export const REPORT_REASONS: ReportReason[] = ['cheat', 'toxic', 'afk', 'name', 
 /** Игрок в списках друзей и недавних соперников. */
 export interface PeerRow { id: string; name: string; rating: number; games: number; online: boolean; inGame: boolean; friend: boolean; at?: number; win?: boolean }
 
-export interface PlayerInfo { id: string; name: string; rating: number; games: number; wins: number; league: string; provisional: boolean; level: number; peak: number; rank?: number }
+export interface PlayerInfo { id: string; name: string; rating: number; games: number; wins: number; league: string; provisional: boolean; level: number; peak: number; rank?: number;
+  medals?: MedalRow[]; life?: LifeStats; show?: MedalRow[] }
 
 // ── Клиент → сервер ──
 export type C2S =
@@ -89,7 +91,7 @@ export type S2C =
   | { t: 'deny'; reason: string }
   | { t: 'radio'; key: string }
   | { t: 'opp_status'; online: boolean; graceUntil?: number }
-  | { t: 'over'; winner: PI; reason: string; ranked: boolean; rating?: { before: number; after: number; league: string } }
+  | { t: 'over'; medals?: string[]; winner: PI; reason: string; ranked: boolean; rating?: { before: number; after: number; league: string } }
   | { t: 'profile'; history: HistRow[] }
   | { t: 'friends'; friends: PeerRow[]; recent: PeerRow[] }
   | { t: 'player'; me: PlayerInfo; history: HistRow[]; h2h: { wins: number; losses: number }; online: boolean; friend: boolean }
@@ -97,7 +99,7 @@ export type S2C =
   | { t: 'invite_status'; state: 'sent' | 'declined' | 'offline' | 'busy' | 'expired'; name: string }
   | { t: 'rematch'; state: 'wait' | 'offer' | 'gone' }
   | { t: 'report_ok'; dup: boolean }
-  | { t: 'top'; rows: { id?: string; name: string; rating: number; games: number; wins: number; league: string }[]; season: string; prizes?: SeasonPrizes }
+  | { t: 'top'; rows: { id?: string; name: string; rating: number; games: number; wins: number; league: string; show?: MedalRow[] }[]; season: string; prizes?: SeasonPrizes }
   | { t: 'sync'; customs?: CustomSpec[]; phase: 'veto' | 'mull' | 'play'; view?: HState; deadline: number; map?: string; side?: Side; myAgent?: string; oppAgent?: string; mullDone?: boolean }
   | { t: 'err'; msg: string }
   | { t: 'pong'; now: number };

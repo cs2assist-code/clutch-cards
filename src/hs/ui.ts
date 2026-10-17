@@ -21,6 +21,7 @@ import {
 import { apply, botEnd, botMulligan, botStep, legalActions, type Action } from './ai';
 import { boardEmblem, boardScene, boardVars } from './boards';
 import * as net from '../online/client';
+import { MEDALS, medalDef, type MedalRow } from '../online/medals';
 import { LEVELS, levelOf, prizePlaces, REPORT_REASONS, type ReportReason, type HistRow, type PeerRow, type PlayerInfo, type S2C, type SeasonPrizes } from '../online/protocol';
 import { haptic } from '../telegram';
 import { questBump, type QuestDef, type QuestKind } from '../quests';
@@ -54,13 +55,15 @@ const S = {
   last: '',
   /** Онлайн-матч (null — игра с ботом). */
   on: null as null | OnlineMatch,
-  lobby: { me: null as PlayerInfo | null, season: '', queued: false, qsize: 0, range: null as null | { lo: number; hi: number; since: number }, history: null as HistRow[] | null, duel: null as string | null, err: '', top: [] as { id?: string; name: string; rating: number; games: number; wins: number; league: string }[], prizes: undefined as SeasonPrizes | undefined, pendingJoin: null as string | null, copied: false,
+  lobby: { me: null as PlayerInfo | null, season: '', queued: false, qsize: 0, range: null as null | { lo: number; hi: number; since: number }, history: null as HistRow[] | null, duel: null as string | null, err: '', top: [] as { id?: string; name: string; rating: number; games: number; wins: number; league: string; show?: MedalRow[] }[], prizes: undefined as SeasonPrizes | undefined, pendingJoin: null as string | null, copied: false,
     friends: null as PeerRow[] | null, recent: [] as PeerRow[], player: null as Extract<S2C, { t: 'player' }> | null, playerFrom: 'rating' as Phase,
     invite: null as null | { code: string; from: { id: string; name: string; rating: number } }, invNote: '', rematch: '' as '' | 'wait' | 'offer' | 'gone', agentsOpen: false },
   radioOpen: false,
   pvMore: false,
   forge: { draft: null as CustomSpec | null, confirmDel: -1 },
-  lastXp: 0,          // сколько опыта дала последняя партия (для экрана итога)
+  lastXp: 0,
+  peek: '',           // профиль соперника поверх боя (id игрока)
+  newMedals: [] as string[],   // медали, полученные в последнем онлайн-матче          // сколько опыта дала последняя партия (для экрана итога)
   report: null as null | { id: string; name: string; reason: ReportReason | '' },
   deck: null as null | { agent: string; cards: string[]; filter: 'all' | 'unit' | 'spell' | 'trap'; saved: boolean },   // в превью карты показаны подробности (классы, броня, расшифровка свойств)
   /** Обучающий матч: какие подсказки уже показаны. */
@@ -912,6 +915,8 @@ export function hsClick(a: string, el: HTMLElement): boolean {
       if (id) { const reset = purgeCustom(id); track('forge_destroy'); fx.banner(reset ? 'Карта уничтожена, колоды с ней снова стандартные' : 'Карта уничтожена', 'info', 1600); } else sfx.deny();
       break; }
     case 'hs-forge-back': S.forge.draft = null; S.phase = 'forge'; break;
+    case 'hs-peek': if (el.dataset.id) { S.peek = el.dataset.id; if (S.lobby.player?.me.id !== el.dataset.id) { S.lobby.player = null; net.send({ t: 'player', id: el.dataset.id }); } } break;
+    case 'hs-peek-close': S.peek = ''; break;
     case 'hs-pvmore': S.pvMore = !S.pvMore; if (S.pvMore) track('pv_more'); break;
     case 'hs-help': S.help = true; break;
     case 'hs-closehelp': S.help = false; break;
@@ -1243,7 +1248,7 @@ function boardHTML() {
     <header class="hs-top">
       ${S.on ? `<button class="ghost sm ${S.on.confirmResign ? 'danger' : ''}" data-act="hs-resign">${S.on.confirmResign ? 'Точно сдаться?' : 'Сдаться'}</button>` : '<button class="ghost sm" data-act="hs-menu">← Меню</button>'}
       <button class="hs-title" data-act="hs-mapinfo" title="Особенность карты">${esc(mp.name)}</button>
-      ${S.on ? `<span class="score on"><b>${esc(S.on.opp.name)}</b>${S.on.oppOnline ? '' : ` <i class="hs-off">не в сети <span class="hs-timer" data-dl="${S.on.graceUntil ?? 0}"></span></i>`}</span>`
+      ${S.on ? `<span class="score on"><b class="${S.on.opp.id ? 'peekable' : ''}" ${S.on.opp.id ? `data-act="hs-peek" data-id="${esc(S.on.opp.id)}"` : ''}>${esc(S.on.opp.name)}</b>${S.on.oppOnline ? '' : ` <i class="hs-off">не в сети <span class="hs-timer" data-dl="${S.on.graceUntil ?? 0}"></span></i>`}</span>`
         : `<span class="score"><b>Вы ${S.score[0]}</b><i>:</i><b>${S.score[1]} Бот</b></span>`}
     </header>
     ${heroHTML(1, tg)}
@@ -1265,6 +1270,7 @@ function boardHTML() {
     ${S.phase === 'play' && s.turn === 0 && me.choice && !S.busy ? choiceHTML() : ''}
     ${S.phase === 'mull' ? mullHTML() : ''}
     ${S.info === 'eco' && ecoReady() ? ecoHTML() : ''}
+    ${peekHTML()}
     ${S.phase === 'gameover' || S.phase === 'over' ? overHTML() : ''}
   </main>`;
 }
@@ -1766,7 +1772,9 @@ async function onNet(m: S2C) {
       S.on.oppOnline = m.online; S.on.graceUntil = m.graceUntil;
       fx.banner(m.online ? 'Соперник вернулся' : 'Соперник отключился — ждём', 'info', 1200);
       break;
-    case 'over': L.rematch = ''; await finishOnline(m); break;
+    case 'over': L.rematch = ''; S.newMedals = m.medals ?? [];
+      S.newMedals.forEach((id, i) => setTimeout(() => { fx.banner(`Новая медаль: ${medalDef(id)?.name ?? id}`, 'defuse', 2000); haptic.win(); }, 3200 + i * 2200));
+      await finishOnline(m); break;
   }
   hooks.render();
 }
@@ -1956,9 +1964,9 @@ function ratingHTML(): string {
     const l = levelOf(me.rating);
     const pct = l.level === 10 ? 100 : Math.max(0, Math.min(100, ((me.rating - l.min) / (l.max + 1 - l.min)) * 100));
     const wr = me.games ? Math.round((me.wins / me.games) * 100) : 0;
-    card = `<section class="rt-me" style="--lc:${LEVEL_COLOR(l.level)}">
+    card = `<section class="rt-me clickable" style="--lc:${LEVEL_COLOR(l.level)}" data-act="hs-player" data-id="${esc(me.id)}" title="Мой профиль и медали">
       ${levelBadge(me.rating, 'xl')}
-      <div class="rt-main"><small>Уровень ${l.level}${me.rank ? ` · место #${me.rank}` : ''}</small><b>${me.rating} <i>Elo</i></b><span>${esc(me.name)}</span></div>
+      <div class="rt-main"><small>Уровень ${l.level}${me.rank ? ` · место #${me.rank}` : ''}</small><b>${me.rating} <i>Elo</i></b><span>${esc(me.name)} ${showHTML(me.show)}</span><em class="rt-prof">Профиль и медали ›</em></div>
       <div class="rt-bar"><i style="width:${pct.toFixed(1)}%"></i></div>
       <div class="rt-barl"><span>${l.min}</span><span>${levelProgress(me.rating)}</span><span>${l.level === 10 ? '' : l.max + 1}</span></div>
       <div class="rt-stats"><span><b>${me.games}</b>матчей</span><span><b>${wr}%</b>побед</span><span><b>${me.peak}</b>лучший</span></div>
@@ -1996,7 +2004,7 @@ function topList(rows: typeof S.lobby.top) {
   return `<ol class="ol-top">${rows.map((r) => {
     const place = places.get(r), prize = place ? pz!.prizes.find((x) => x.place === place) : undefined;
     return `<li class="${prize ? 'prz' : ''} ${r.id && r.id === meId ? 'me' : ''}" ${r.id ? `data-act="hs-player" data-id="${esc(r.id)}"` : ''} style="--rc:${rarityColor(prize?.rarity)}">
-      ${levelBadge(r.rating, 'xs')}<b>${esc(r.name)}</b><span>${r.rating}</span>
+      ${levelBadge(r.rating, 'xs')}<b>${esc(r.name)} ${showHTML(r.show)}</b><span>${r.rating}</span>
       <small>${r.wins} побед из ${r.games}${pz && !place && r.games < pz.minGames ? ` · нужно ${pz.minGames} матчей` : ''}</small>
       ${prize ? `<i class="tp-prize" title="${esc(prize.skin)}">🎁 ${esc(prize.skin)}</i>` : ''}</li>`;
   }).join('')}</ol>`;
@@ -2064,6 +2072,47 @@ function reportHTML() {
   </div></div>`;
 }
 
+// ─────────────────────────── Медали ───────────────────────────
+/** Значок медали: круг цвета ступени (бронза…платина) или щит сезонного значка. */
+function medalHTML(row: MedalRow | { id: string; at?: number; extra?: string }, size: '' | 'xs' = '', locked = false) {
+  const d = medalDef(row.id, row.extra);
+  if (!d) return '';
+  const season = row.id.startsWith('season');
+  return `<span class="md ${size} t-${d.tier} ${season ? 'season' : ''} ${locked ? 'locked' : ''}" title="${esc(d.name)} — ${esc(d.desc)}"><i>${esc(d.icon)}</i></span>`;
+}
+/** Витрина: лучшие 3 медали рядом с именем. */
+const showHTML = (rows?: MedalRow[]) => (rows?.length ? `<span class="md-show">${rows.map((r) => medalHTML(r, 'xs')).join('')}</span>` : '');
+/** Все медали игрока: полученные цветные, следующие ступени — серые с прогрессом. */
+function medalsSection(p: PlayerInfo) {
+  const got = new Map((p.medals ?? []).map((m) => [m.id, m]));
+  const life = p.life;
+  const seasonal = (p.medals ?? []).filter((m) => m.id.startsWith('season'));
+  const groups = [...new Set(MEDALS.map((m) => m.group))];
+  const items = groups.map((g) => {
+    const list = MEDALS.filter((m) => m.group === g);
+    const owned = list.filter((m) => got.has(m.id));
+    const next = list.find((m) => !got.has(m.id));
+    const top = owned[owned.length - 1];
+    const cur = life && next?.stat ? life[next.stat] : 0;
+    return `<div class="md-item ${top ? '' : 'none'}">${top ? medalHTML(got.get(top.id)!) : medalHTML({ id: list[0].id }, '', true)}
+      <span><b>${esc(top ? top.name : g)}</b><small>${esc(top ? top.desc : list[0].desc)}</small>
+      ${next && life ? `<small class="md-next">Дальше: ${esc(next.name)} · ${Math.min(cur, next.need!)}/${next.need}</small><i class="md-bar"><i style="width:${Math.min(100, Math.round((cur / next.need!) * 100))}%"></i></i>` : top ? '<small class="md-next done">Все ступени</small>' : ''}</span></div>`;
+  }).join('');
+  return `<h4 class="sub">Медали · ${(p.medals ?? []).length}</h4>
+    ${seasonal.length ? `<div class="md-seasons">${seasonal.map((m) => `<div>${medalHTML(m)}<small>${esc(medalDef(m.id, m.extra)!.desc)}</small></div>`).join('')}</div>` : ''}
+    <div class="md-grid">${items}</div>
+    ${life ? `<p class="note">Серия сейчас: <b>${life.streak}</b> · лучшая: <b>${life.best_streak}</b> · побед всего: <b>${life.rwins}</b>. Медали дают за рейтинговые матчи; значки топ-10 — по итогам сезона.</p>` : ''}`;
+}
+/** Профиль соперника поверх боя — без ухода со стола. */
+function peekHTML() {
+  if (!S.peek) return '';
+  const p = S.lobby.player;
+  const body = !p || p.me.id !== S.peek ? '<p class="note">Загружаем…</p>' : (() => { const me = p.me, l = levelOf(me.rating);
+    return `<div class="pk-head">${levelBadge(me.rating, 'xl')}<div><b>${esc(me.name)}</b><small>Уровень ${l.level} · ${me.rating} Elo${me.rank ? ` · #${me.rank}` : ''}</small><small>${me.games} матчей · серия ${me.life?.streak ?? 0}</small></div></div>
+      ${medalsSection(me)}`; })();
+  return `<div class="hs-ov pk-ov" data-act="hs-peek-close"><div class="hs-ovbox pk-box" data-act="">${body}<button class="ghost" data-act="hs-peek-close">Закрыть</button></div></div>`;
+}
+
 function playerHTML() {
   const L = S.lobby, p = L.player;
   const head = `<header class="rm-head"><button class="ghost sm" data-act="hs-player-back">← Назад</button><span class="rm-title">Профиль</span><span></span></header>`;
@@ -2072,8 +2121,8 @@ function playerHTML() {
   const self = L.me?.id === me.id;
   return `<main class="rm scroll ol rt">${head}
     <section class="rt-me" style="--lc:${LEVEL_COLOR(l.level)}">${levelBadge(me.rating, 'xl')}
-      <div class="rt-main"><small>Уровень ${l.level}${me.rank ? ` · место #${me.rank}` : ''} · ${p.online ? '<span class="pr-st on">в сети</span>' : 'не в сети'}</small><b>${me.rating} <i>Elo</i></b><span>${esc(me.name)}</span></div>
-      <div class="rt-stats"><span><b>${me.games}</b>матчей</span><span><b>${wr}%</b>побед</span><span><b>${me.peak}</b>лучший</span></div>
+      <div class="rt-main"><small>Уровень ${l.level}${me.rank ? ` · место #${me.rank}` : ''} · ${p.online ? '<span class="pr-st on">в сети</span>' : 'не в сети'}</small><b>${me.rating} <i>Elo</i></b><span>${esc(me.name)} ${showHTML(me.show)}</span></div>
+      <div class="rt-stats"><span><b>${me.games}</b>матчей</span><span><b>${wr}%</b>побед</span><span><b>${me.life?.best_streak ?? 0}</b>лучшая серия</span></div>
     </section>
     ${self ? '' : `<p class="pr-h2h">Ваши встречи: <b class="w">${p.h2h.wins}</b> : <b class="l">${p.h2h.losses}</b></p>
     <div class="pr-acts">
@@ -2081,6 +2130,7 @@ function playerHTML() {
       ${p.friend ? `<button class="ghost" data-act="hs-friend-del" data-id="${esc(me.id)}">Убрать из друзей</button>` : `<button class="ghost" data-act="hs-friend-add" data-id="${esc(me.id)}">Добавить в друзья</button>`}
       <button class="ghost sm rep-btn" data-act="hs-report" data-id="${esc(me.id)}" data-name="${esc(me.name)}">⚑ Пожаловаться</button>
     </div>${L.invNote ? `<p class="note">${esc(L.invNote)}</p>` : ''}`}
+    ${medalsSection(me)}
     <h4 class="sub">Последние матчи</h4>${p.history.length ? histList(p.history, false) : '<p class="note">Пока нет рейтинговых матчей.</p>'}
   </main>${reportHTML()}`;
 }
@@ -2112,10 +2162,10 @@ function vetoHTML() {
   }).join('');
   return `<main class="rm scroll ol">
     <header class="rm-head"><span></span><span class="rm-title">${o.ranked ? 'Рейтинговая игра' : 'Дуэль'}</span><span></span></header>
-    <p class="ol-vs">Вы <i>против</i> <b>${esc(o.opp.name)}</b> ${levelBadge(o.opp.rating, 'xs')}<small>${o.opp.rating} Elo</small></p>
+    <p class="ol-vs">Вы <i>против</i> <b class="peekable" ${o.opp.id ? `data-act="hs-peek" data-id="${esc(o.opp.id)}"` : ''}>${esc(o.opp.name)}</b> ${levelBadge(o.opp.rating, 'xs')}<small>${o.opp.rating} Elo</small></p>
     <p class="ol-vetohint">${v?.picked ? `Играем на <b>${esc(mapDef(v.picked).name)}</b>` : v?.myTurn ? 'Ваш ход: уберите карту' : 'Соперник убирает карту…'} ${v?.picked ? '' : `<b class="hs-timer" data-dl="${o.deadline}"></b>`}</p>
     <div class="ol-maps">${maps}</div>
-  </main>`;
+  </main>${peekHTML()}`;
 }
 
 function topHTML() {
@@ -2139,7 +2189,8 @@ function onlineOverHTML() {
   const delta = rt ? rt.after - rt.before : 0;
   return `<div class="hs-ov"><div class="hs-ovbox ${win ? 'win' : 'lose'}">
     <h2>${win ? 'Победа' : 'Поражение'}</h2>
-    <p class="note">${esc(REASON_RU[r.reason]?.(win) ?? '')} · против ${esc(o.opp.name)}</p>
+    <p class="note">${esc(REASON_RU[r.reason]?.(win) ?? '')} · против <b class="peekable" ${o.opp.id ? `data-act="hs-peek" data-id="${esc(o.opp.id)}"` : ''}>${esc(o.opp.name)}</b></p>
+    ${S.newMedals.length ? `<div class="md-new"><small>Новые медали</small>${S.newMedals.map((id) => `<span>${medalHTML({ id })}<b>${esc(medalDef(id)?.name ?? id)}</b></span>`).join('')}</div>` : ''}
     ${mvpHTML()}
     ${rt ? (() => { const lb = levelOf(rt.before).level, la = levelOf(rt.after).level;
       return `<div class="ol-delta ${delta >= 0 ? 'up' : 'down'}">${levelBadge(rt.after)}<div><b>${delta >= 0 ? '+' : ''}${delta} Elo</b><small>${rt.before} → ${rt.after}</small>

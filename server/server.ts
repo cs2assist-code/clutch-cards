@@ -23,6 +23,7 @@ import { corsPreflight, initAnalytics, statsCsv, statsPage } from './analytics';
 import { AGENTS, MAPS } from '../src/game/cards';
 import { validDeck } from '../src/hs/cards';
 import { FORGE_MAX_CARDS, registerCustoms, validSpec } from '../src/hs/forge';
+import { earnedBy, showcase, type LifeStats, type MedalRow } from '../src/online/medals';
 import type { Side } from '../src/game/types';
 import { canEco, choose, eco, endTurn, mulligan, newGame, setRng, startGame, type HState, type PI } from '../src/hs/engine';
 import { apply } from '../src/hs/ai';
@@ -59,6 +60,9 @@ CREATE TABLE IF NOT EXISTS matches (id INTEGER PRIMARY KEY, at INTEGER NOT NULL,
   ra_before REAL, rb_before REAL, ra_after REAL, rb_after REAL);
 CREATE INDEX IF NOT EXISTS players_top ON players (season, rating DESC);
 CREATE TABLE IF NOT EXISTS friends (a TEXT NOT NULL, b TEXT NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (a, b));
+CREATE TABLE IF NOT EXISTS lifestats (player TEXT PRIMARY KEY, streak INTEGER NOT NULL DEFAULT 0, best_streak INTEGER NOT NULL DEFAULT 0, rwins INTEGER NOT NULL DEFAULT 0,
+  rgames INTEGER NOT NULL DEFAULT 0, bomb_wins INTEGER NOT NULL DEFAULT 0, defuse_wins INTEGER NOT NULL DEFAULT 0, knife_wins INTEGER NOT NULL DEFAULT 0, giants INTEGER NOT NULL DEFAULT 0, peak REAL NOT NULL DEFAULT 1000);
+CREATE TABLE IF NOT EXISTS medals (player TEXT NOT NULL, medal TEXT NOT NULL, at INTEGER NOT NULL, extra TEXT, PRIMARY KEY (player, medal));
 CREATE TABLE IF NOT EXISTS reports (id INTEGER PRIMARY KEY, at INTEGER NOT NULL, reporter TEXT NOT NULL, target TEXT NOT NULL, reason TEXT NOT NULL, note TEXT);
 CREATE INDEX IF NOT EXISTS reports_target ON reports (target, at);
 CREATE TABLE IF NOT EXISTS season_results (season INTEGER NOT NULL, place INTEGER NOT NULL, player TEXT NOT NULL, name TEXT NOT NULL, rating REAL NOT NULL, games INTEGER NOT NULL, prize TEXT, PRIMARY KEY (season, place));
@@ -98,6 +102,7 @@ if (process.argv[2] === '--new-season') {
   for (const [r, place] of places) {
     const prize = pz?.prizes.find((x) => x.place === place);
     db.run('INSERT OR REPLACE INTO season_results (season, place, player, name, rating, games, prize) VALUES (?,?,?,?,?,?,?)', [old.id, place, r.id, r.name, r.rating, r.games, prize ? `${prize.skin}${prize.wear ? ` (${prize.wear})` : ''}` : null]);
+    db.run('INSERT OR REPLACE INTO medals (player, medal, at, extra) VALUES (?, ?, ?, ?)', [r.id, `season${old.id}_top${place === 1 ? 1 : place <= 3 ? 3 : 10}`, Date.now(), `${old.name}|${place}`]);
     console.log(`#${place} ${r.name} (${r.id}) ${Math.round(r.rating)} Elo — ${prize?.skin ?? 'без приза'}`);
   }
   const name = process.argv[3] ?? `Сезон ${currentSeason().id + 1}`;
@@ -121,8 +126,31 @@ function loadPlayer(id: string, name: string): PlayerRow {
 }
 const info = (p: PlayerRow): PlayerInfo => {
   const rank = p.games ? (db.query('SELECT COUNT(*) AS n FROM players WHERE season = ? AND games > 0 AND rating > ?').get(p.season, p.rating) as { n: number }).n + 1 : undefined;
-  return { id: p.id, name: p.name, rating: Math.round(p.rating), games: p.games, wins: p.wins, league: leagueOf(p.rating).name, provisional: p.games < 5, level: levelOf(p.rating).level, peak: Math.round(p.peak), rank };
+  const medals = medalsOf(p.id);
+  return { id: p.id, name: p.name, rating: Math.round(p.rating), games: p.games, wins: p.wins, league: leagueOf(p.rating).name, provisional: p.games < 5, level: levelOf(p.rating).level, peak: Math.round(p.peak), rank,
+    medals, life: lifeOf(p.id), show: showcase(medals) };
 };
+// ── Медали и пожизненная статистика (не сбрасывается сезоном) ──
+const LIFE0: LifeStats = { streak: 0, best_streak: 0, rwins: 0, rgames: 0, bomb_wins: 0, defuse_wins: 0, knife_wins: 0, giants: 0, peak: START_RATING };
+function lifeOf(id: string): LifeStats {
+  const r = db.query('SELECT streak, best_streak, rwins, rgames, bomb_wins, defuse_wins, knife_wins, giants, peak FROM lifestats WHERE player = ?').get(id) as LifeStats | null;
+  return r ? { ...r, peak: Math.round(r.peak) } : { ...LIFE0 };
+}
+function saveLife(id: string, L: LifeStats) {
+  db.run(`INSERT INTO lifestats (player, streak, best_streak, rwins, rgames, bomb_wins, defuse_wins, knife_wins, giants, peak) VALUES (?,?,?,?,?,?,?,?,?,?)
+    ON CONFLICT(player) DO UPDATE SET streak=excluded.streak, best_streak=excluded.best_streak, rwins=excluded.rwins, rgames=excluded.rgames, bomb_wins=excluded.bomb_wins,
+    defuse_wins=excluded.defuse_wins, knife_wins=excluded.knife_wins, giants=excluded.giants, peak=excluded.peak`,
+    [id, L.streak, L.best_streak, L.rwins, L.rgames, L.bomb_wins, L.defuse_wins, L.knife_wins, L.giants, L.peak]);
+}
+function medalsOf(id: string): MedalRow[] {
+  return (db.query('SELECT medal AS id, at, extra FROM medals WHERE player = ? ORDER BY at').all(id) as { id: string; at: number; extra: string | null }[]).map((m) => ({ id: m.id, at: m.at, ...(m.extra ? { extra: m.extra } : {}) }));
+}
+/** Выдать положенные медали; возвращает новые. */
+function awardMedals(id: string, L: LifeStats): string[] {
+  const have = new Set(medalsOf(id).map((m) => m.id)), fresh = earnedBy(L).filter((m) => !have.has(m));
+  for (const m of fresh) db.run('INSERT OR IGNORE INTO medals (player, medal, at) VALUES (?, ?, ?)', [id, m, Date.now()]);
+  return fresh;
+}
 /** Последние рейтинговые матчи игрока. */
 function history(id: string): HistRow[] {
   const rows = db.query(`SELECT m.at, m.winner, m.a, m.b, m.ra_before, m.rb_before, m.ra_after, m.rb_after, m.map, m.reason, pa.name AS an, pb.name AS bn
@@ -261,6 +289,7 @@ function doKnife(r: Room, p: PI, m: Move) {
   if (r.knife.winner !== null) {
     r.phase = 'side';
     const w = r.knife.winner;
+    if (r.ranked) { const L = lifeOf(r.seats[w].id); L.knife_wins++; saveLife(r.seats[w].id, L); }
     setDeadline(r, SIDE_MS + 2000, () => doSide(r, w, randomInt(0, 2) ? 'T' : 'CT'));
     for (const q of [0, 1] as PI[]) send(r.seats[q].ws, knifeMsg(r, q, rv));
     return;
@@ -390,11 +419,24 @@ function finish(r: Room, winner: PI, reason: string) {
     upd.run(na, winner === 0 ? 1 : 0, na, Date.now(), A.id);
     upd.run(nb, winner === 1 ? 1 : 0, nb, Date.now(), B.id);
   }
+  // Пожизненная статистика и медали — только за рейтинговые матчи
+  const fresh: [string[], string[]] = [[], []];
+  if (r.ranked) for (const p of [0, 1] as PI[]) {
+    const id = r.seats[p].id, L = lifeOf(id), win = winner === p, side = r.sides[p];
+    const me = p === 0 ? ra : rb, opp = p === 0 ? rb : ra, after = p === 0 ? na : nb;
+    L.rgames++;
+    if (win) { L.rwins++; L.streak++; L.best_streak = Math.max(L.best_streak, L.streak); if (opp - me >= 200) L.giants++; } else L.streak = 0;
+    if (win && reason === 'bomb' && side === 'T') L.bomb_wins++;
+    if (win && reason === 'defuse' && side === 'CT') L.defuse_wins++;
+    L.peak = Math.max(L.peak, Math.round(after));
+    saveLife(id, L);
+    fresh[p] = awardMedals(id, L);
+  }
   db.run('INSERT INTO matches (at, ranked, season, a, b, winner, reason, map, turns, ra_before, rb_before, ra_after, rb_after) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)',
     [Date.now(), r.ranked ? 1 : 0, season, A.id, B.id, r.seats[winner].id, reason, r.map, r.s?.turnNo ?? 0, ra, rb, na, nb]);
   for (const p of [0, 1] as PI[]) {
     const before = p === 0 ? ra : rb, after = p === 0 ? na : nb;
-    send(r.seats[p].ws, { t: 'over', winner: winner === p ? 0 : 1, reason, ranked: r.ranked, rating: r.ranked ? { before: Math.round(before), after: Math.round(after), league: leagueOf(after).name } : undefined });
+    send(r.seats[p].ws, { t: 'over', medals: fresh[p], winner: winner === p ? 0 : 1, reason, ranked: r.ranked, rating: r.ranked ? { before: Math.round(before), after: Math.round(after), league: leagueOf(after).name } : undefined });
     roomOf.delete(r.seats[p].id);
     rematch.set(r.seats[p].id, { opp: r.seats[other(p)].id, at: Date.now() });
     const ws = r.seats[p].ws;
@@ -474,7 +516,7 @@ function onMessage(ws: WS, m: C2S) {
   switch (m.t) {
     case 'top': {
       const season = currentSeason();
-      const rows = topRows(season.id).map((x) => ({ id: x.id, name: x.name, rating: Math.round(x.rating), games: x.games, wins: x.wins, league: leagueOf(x.rating).name }));
+      const rows = topRows(season.id).map((x) => ({ id: x.id, name: x.name, rating: Math.round(x.rating), games: x.games, wins: x.wins, league: leagueOf(x.rating).name, show: showcase(medalsOf(x.id)) }));
       return send(ws, { t: 'top', rows, season: season.name, prizes: seasonPrizes() });
     }
     case 'profile': send(ws, { t: 'me', me: info(loadPlayer(u.id, u.name)), season: currentSeason().name }); return send(ws, { t: 'profile', history: history(u.id) });
