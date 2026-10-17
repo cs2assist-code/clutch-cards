@@ -31,6 +31,9 @@ export interface HCard {
   sig?: string;
   /** Режимы: при розыгрыше выбирается один (как «Выберите» в Hearthstone). */
   modes?: Mode[];
+  /** Своя карта игрока: портрет берётся с этого оружия. */
+  art?: string;
+  custom?: boolean;
 }
 export interface Mode { name: string; text: string; atk?: number; hp?: number; add?: KW[]; remove?: KW[] }
 
@@ -184,12 +187,16 @@ for (const c of HCARDS) if (c.kind === 'unit' && c.hp) c.hp = Math.ceil(c.hp * H
 
 const BY_ID = new Map(HCARDS.map((c) => [c.id, c]));
 export const hcard = (id: string): HCard => BY_ID.get(id) ?? HCARDS[0];
+/** Добавить карту во время игры (свои карты игроков). */
+export function registerCard(c: HCard) { BY_ID.set(c.id, c); }
+export const hasCard = (id: string) => BY_ID.has(id);
 
 /** Картинка карты: из классического режима или портрет агента. */
 /** Портрет бойца с оружием для стороны (u_t_ak47.webp). Нейтральное оружие — по стороне владельца. Нет картинки — null. */
 export function unitArt(c: HCard, owner: 'T' | 'CT'): string | null {
   if (c.kind !== 'unit') return null;
-  const key = `${(c.side === 'N' ? owner : c.side).toLowerCase()}_${c.id}`;
+  let key = `${(c.side === 'N' ? owner : c.side).toLowerCase()}_${c.art ?? c.id}`;
+  if (c.art && !UNIT_ART.has(key)) key = `${owner === 'T' ? 'ct' : 't'}_${c.art}`;   // своя карта: портрет любой стороны
   if (!UNIT_ART.has(key)) return null;
   return (globalThis as { __CARD_IMG?: Record<string, string> }).__CARD_IMG?.[`u_${key}`] ?? `img/u_${key}.webp`;
 }
@@ -304,11 +311,19 @@ export function deckPool(agentId: string): string[] {
 }
 export const DECK_MAX_COPIES = 2;
 /** Своя колода годится: ровно DECK_SIZE карт из пула агента, не больше 2 копий каждой. */
-export function validDeck(agentId: string, deck: unknown): deck is string[] {
+/** Своих карт (из Мастерской) в колоде — не больше стольких копий в сумме. */
+export const CUSTOM_PER_DECK = 2;
+/** allowed — какие свои карты игроку можно класть (его собственные); без него — любые зарегистрированные свои. */
+export function validDeck(agentId: string, deck: unknown, allowed?: Set<string>): deck is string[] {
   if (!Array.isArray(deck) || deck.length !== DECK_SIZE) return false;
   const pool = new Set(deckPool(agentId)), n = new Map<string, number>();
+  let customs = 0;
   for (const id of deck) {
-    if (typeof id !== 'string' || !pool.has(id)) return false;
+    if (typeof id !== 'string') return false;
+    if (id.startsWith('cc_')) {
+      if (!(allowed ? allowed.has(id) && BY_ID.has(id) : BY_ID.get(id)?.custom)) return false;
+      if (++customs > CUSTOM_PER_DECK) return false;
+    } else if (!pool.has(id)) return false;
     n.set(id, (n.get(id) ?? 0) + 1);
     if (n.get(id)! > DECK_MAX_COPIES) return false;
   }
