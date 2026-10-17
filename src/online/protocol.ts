@@ -2,6 +2,7 @@
 // Сервер хранит настоящий стол (места 0 и 1). Каждому игроку уходит его вид:
 //  • повёрнутый — сам игрок всегда под индексом 0 (интерфейс так и рисует: «я» внизу);
 //  • без чужой информации — карты в руке и колоде соперника, его засады и открытый выбор заменены «рубашками».
+import type { CustomSpec } from '../hs/forge';
 import type { Action } from '../hs/ai';
 import type { Ev, HState, PI } from '../hs/engine';
 import type { Side } from '../game/types';
@@ -9,7 +10,7 @@ import type { KnifeRound, KnifeState, Move } from '../hs/knife';
 
 export const HIDDEN = 'hidden';
 /** Агенты игрока за обе стороны и (необязательно) его свои колоды для них. */
-export type Agents = { T: string; CT: string; dT?: string[]; dCT?: string[] };
+export type Agents = { T: string; CT: string; dT?: string[]; dCT?: string[]; cc?: CustomSpec[] };
 export type StepAction = Action | { k: 'end' };
 
 /** Уровни по рейтингу — как на FACEIT: 10 уровней, старт с 1000 (уровень 4). */

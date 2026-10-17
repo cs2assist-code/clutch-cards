@@ -7,11 +7,13 @@ import { c4, preloadShots, sample, sfx, weaponShot } from '../sound';
 import { preloadVoice, say, setSubtitle, type VoKey } from '../voice';
 import { track } from '../analytics';
 import { dateLoc, isEn, numLoc, tr } from '../i18n';
-import { agentsWithDecks, getDeck, setDeck } from './decks';
+import { agentsWithDecks, getDeck, purgeCustom, setDeck } from './decks';
+import { canCreate, canDestroy, createCard, daysToWeekReset, destroyCard, gainXp, myCustomIds, progress } from './progress';
+import { BASES, FORGE_BUDGET, FORGE_COST_XP, FORGE_DESTROY_XP, FORGE_KW, FORGE_MAX_CARDS, KW_PTS, LIMITS, PTS, pointsOf, priceOf, specProblems, toHCard, XP_WEEK_CAP, type BaseId, type CustomSpec } from './forge';
 import { recordRound, recordRoundsMatch, markTutorialDone } from '../stats';
 import { SIL } from './art-index';
 import { BEATS, botKnifeMove, KNIFE_HP, MOVE_RU, MOVES, newKnife, resolveKnife, type KnifeRound, type KnifeState, type Move } from './knife';
-import { agentDeck, CLASS_RU, DECK_MAX_COPIES, DECK_SIZE, deckPool, validDeck, HCARDS, hcard, hImg, unitArt, KW_RU, MAP_RULES, matchup, POWERS, sigCards, STYLE_BEATS, STYLE_RU, styleOf, type HCard, type KW, type Style } from './cards';
+import { agentDeck, CLASS_RU, CUSTOM_PER_DECK, DECK_MAX_COPIES, DECK_SIZE, deckPool, validDeck, HCARDS, hcard, hImg, unitArt, KW_RU, MAP_RULES, matchup, POWERS, sigCards, STYLE_BEATS, STYLE_RU, styleOf, type HCard, type KW, type Style } from './cards';
 import {
   attackTargets, attackBonus, canAttack, canSave, canShop, costOf, isClutch, isCovered, shopPrice, isBehind, lossBonus, maxHp, endTurn, canEco, eco, type EcoPick, findUnit, heroId, HS, incomeOf, KILL_REWARD, bombGuarded, mulligan, newGame, playTargets, powerTargets, startGame,
   type Diff, type Ev, type HState, type HUnit, type PI,
@@ -24,7 +26,7 @@ import { haptic } from '../telegram';
 import { questBump, type QuestDef, type QuestKind } from '../quests';
 import { shareResult } from '../share';
 
-type Phase = 'rating' | 'setup' | 'knife' | 'sidepick' | 'mull' | 'play' | 'gameover' | 'over' | 'cards' | 'rules' | 'lobby' | 'veto' | 'top' | 'player' | 'decks' | 'deck';
+type Phase = 'rating' | 'setup' | 'knife' | 'sidepick' | 'mull' | 'play' | 'gameover' | 'over' | 'cards' | 'rules' | 'lobby' | 'veto' | 'top' | 'player' | 'decks' | 'deck' | 'forge' | 'forge-edit';
 type Sel = null | { k: 'hand'; uid: string } | { k: 'atk'; id: string } | { k: 'power' };
 interface GameRes { win: boolean; reason: HState['reason']; side: Side; turns: number }
 const S = {
@@ -57,6 +59,8 @@ const S = {
     invite: null as null | { code: string; from: { id: string; name: string; rating: number } }, invNote: '', rematch: '' as '' | 'wait' | 'offer' | 'gone', agentsOpen: false },
   radioOpen: false,
   pvMore: false,
+  forge: { draft: null as CustomSpec | null, confirmDel: -1 },
+  lastXp: 0,          // сколько опыта дала последняя партия (для экрана итога)
   report: null as null | { id: string; name: string; reason: ReportReason | '' },
   deck: null as null | { agent: string; cards: string[]; filter: 'all' | 'unit' | 'spell' | 'trap'; saved: boolean },   // в превью карты показаны подробности (классы, броня, расшифровка свойств)
   /** Обучающий матч: какие подсказки уже показаны. */
@@ -83,7 +87,7 @@ const other = (x: Side): Side => (x === 'T' ? 'CT' : 'T');
 const mySide = () => (S.on ? S.on.side : S.side);
 
 // ─────────────────────────── Ход матча ───────────────────────────
-export function hsOpen(page: 'setup' | 'cards' | 'rules' | 'lobby' | 'rating' | 'decks' = 'setup') {
+export function hsOpen(page: 'setup' | 'cards' | 'rules' | 'lobby' | 'rating' | 'decks' | 'forge' = 'setup') {
   if (page === 'lobby') { openLobby(); return; }
   if (page === 'rating') { openLobby('rating'); return; }
   S.phase = page; S.s = null; S.on = null; S.info = null; hooks.render();
@@ -565,6 +569,8 @@ async function finishGame() {
   recordRound(S.setup[mySide()], win, s.p[0].kills);
   questsAtEnd(win, S.setup[mySide()], s.p[0].kills, false);
   track('hs_game', { game: S.game, win, reason: s.reason, side: mySide(), turns: s.p[0].turns, agent: S.setup[mySide()], bot: S.botAgent, diff: S.setup.diff, map: S.map, tut: !!S.tut });
+  // Опыт для Мастерской: бот «Обычный» и «Сложный» (за «Новичка» и обучение — нет)
+  S.lastXp = S.tut || S.setup.diff === 'easy' ? 0 : gainXp(win ? XP_GAIN.botWin : XP_GAIN.botLoss);
   const done = true;   // против бота — одна партия: сторону заранее решил ножевой раунд
   if (S.tut) { markTutorialDone(); S.tut.over = true; }
   S.phase = done ? 'over' : 'gameover';
@@ -862,6 +868,7 @@ export function hsClick(a: string, el: HTMLElement): boolean {
     case 'hs-deck-edit': { const a = el.dataset.v!; S.deck = { agent: a, cards: [...(getDeck(a) ?? [])], filter: 'all', saved: true }; S.phase = 'deck'; S.info = null; track('deck_open', { agent: a }); break; }
     case 'hs-deck-add': { const d = S.deck, id = el.dataset.v!; if (!d) break;
       if (d.cards.length >= DECK_SIZE || d.cards.filter((x) => x === id).length >= DECK_MAX_COPIES) { sfx.deny(); break; }
+      if (id.startsWith('cc_') && d.cards.filter((x) => x.startsWith('cc_')).length >= CUSTOM_PER_DECK) { sfx.deny(); fx.banner(`Своих карт в колоде — не больше ${CUSTOM_PER_DECK}`, 'info', 1300); break; }
       d.cards.push(id); d.saved = false; sfx.click(); break; }
     case 'hs-deck-del': { const d = S.deck; if (!d) break; const i = d.cards.lastIndexOf(el.dataset.v!); if (i >= 0) { d.cards.splice(i, 1); d.saved = false; } break; }
     case 'hs-deck-fill': { const d = S.deck; if (!d) break;
@@ -873,7 +880,7 @@ export function hsClick(a: string, el: HTMLElement): boolean {
       d.saved = false; break; }
     case 'hs-deck-clear': if (S.deck) { S.deck.cards = []; S.deck.saved = false; } break;
     case 'hs-deck-filter': if (S.deck) S.deck.filter = el.dataset.v as 'all' | 'unit' | 'spell' | 'trap'; break;
-    case 'hs-deck-save': if (S.deck && validDeck(S.deck.agent, S.deck.cards)) { setDeck(S.deck.agent, S.deck.cards); S.deck.saved = true; track('deck_save', { agent: S.deck.agent }); fx.banner('Колода сохранена', 'defuse', 1000); sfx.buy(); } else sfx.deny(); break;
+    case 'hs-deck-save': if (S.deck && validDeck(S.deck.agent, S.deck.cards, new Set(myCustomIds()))) { setDeck(S.deck.agent, S.deck.cards); S.deck.saved = true; track('deck_save', { agent: S.deck.agent }); fx.banner('Колода сохранена', 'defuse', 1000); sfx.buy(); } else sfx.deny(); break;
     case 'hs-deck-reset': if (S.deck) { setDeck(S.deck.agent, null); S.deck = null; S.phase = 'decks'; fx.banner('Будет играть стандартная колода', 'info', 1200); } break;
     case 'hs-deck-back': S.deck = null; S.phase = 'decks'; S.info = null; break;
     case 'hs-report': S.report = { id: el.dataset.id!, name: el.dataset.name ?? '', reason: '' }; break;
@@ -885,6 +892,26 @@ export function hsClick(a: string, el: HTMLElement): boolean {
       else fx.banner('Нет связи с сервером', 'info', 1200);
       S.report = null;
     } break;
+    case 'hs-forge': S.phase = 'forge'; S.forge.confirmDel = -1; S.info = null; break;
+    case 'hs-forge-new': if (canCreate()) { S.forge.draft = { name: '', base: 'rifle', atk: 4, hp: 6, armor: 0, kw: [], art: BASES.rifle.arts[0] }; S.phase = 'forge-edit'; track('forge_open'); } else sfx.deny(); break;
+    case 'hs-forge-base': { const d = S.forge.draft; if (!d) break; const b = el.dataset.v as BaseId; d.base = b; d.art = BASES[b].arts[0];
+      d.kw = d.kw.filter((k) => !BASES[b].kw.includes(k)); break; }
+    case 'hs-forge-art': if (S.forge.draft) S.forge.draft.art = el.dataset.v!; break;
+    case 'hs-forge-stat': { const d = S.forge.draft; if (!d) break; const k = el.dataset.k as 'atk' | 'hp' | 'armor', lim = LIMITS[k];
+      d[k] = Math.max(lim[0], Math.min(lim[1], d[k] + Number(el.dataset.d))); sfx.click(); break; }
+    case 'hs-forge-kw': { const d = S.forge.draft, k = el.dataset.v as CustomSpec['kw'][number]; if (!d) break;
+      if (d.kw.includes(k)) d.kw = d.kw.filter((x) => x !== k); else if (d.kw.length < LIMITS.kw) d.kw.push(k); else sfx.deny(); break; }
+    case 'hs-forge-create': { const d = S.forge.draft; if (!d) break;
+      const id = createCard({ ...d, name: d.name.trim() });
+      if (id) { track('forge_create', { base: d.base, pts: pointsOf(d), price: priceOf(d) }); S.forge.draft = null; S.phase = 'forge'; fx.banner(`Карта «${d.name.trim()}» создана`, 'defuse', 1500); haptic.win(); sfx.buy(); }
+      else { sfx.deny(); fx.banner(specProblems(d)[0] ?? 'Такая карта уже есть', 'info', 1400); }
+      break; }
+    case 'hs-forge-del': { const i = Number(el.dataset.i);
+      if (S.forge.confirmDel !== i) { S.forge.confirmDel = i; break; }
+      const id = destroyCard(i); S.forge.confirmDel = -1;
+      if (id) { const reset = purgeCustom(id); track('forge_destroy'); fx.banner(reset ? 'Карта уничтожена, колоды с ней снова стандартные' : 'Карта уничтожена', 'info', 1600); } else sfx.deny();
+      break; }
+    case 'hs-forge-back': S.forge.draft = null; S.phase = 'forge'; break;
     case 'hs-pvmore': S.pvMore = !S.pvMore; if (S.pvMore) track('pv_more'); break;
     case 'hs-help': S.help = true; break;
     case 'hs-closehelp': S.help = false; break;
@@ -988,6 +1015,8 @@ export function hsHTML(): string {
   if (S.phase === 'rating') return ratingHTML();
   if (S.phase === 'cards') return catalogHTML();
   if (S.phase === 'decks') return decksHTML();
+  if (S.phase === 'forge') return forgeHTML();
+  if (S.phase === 'forge-edit') return forgeEditHTML();
   if (S.phase === 'deck') return deckEditHTML();
   if (S.phase === 'rules') return rulesHTML();
   if (S.phase === 'knife' || S.phase === 'sidepick') return knifeHTML();
@@ -1120,7 +1149,7 @@ function cardFace(c: HCard, free = false, cost = c.cost, side: Side = mySide()) 
   return `<span class="hc-plate"></span>
     ${art ? `<span class="hc-full"><img src="${esc(art)}" alt=""></span>` : `<span class="hc-art"><img src="${esc(hImg(c))}" alt="" decoding="async"></span>`}
     <span class="hc-ribbon"><span class="hc-name">${esc(c.name)}</span></span>
-    <span class="hc-type">${typeIcon(c)}</span>
+    <span class="hc-type">${typeIcon(c)}</span>${c.custom ? '<span class="hc-custom" title="Своя карта">⚒</span>' : ''}
     <span class="hc-cost ${free ? 'free' : ''} ${cost < c.cost ? 'cheap' : ''}"><i>${free ? '0' : cost ? numLoc(cost / 1000) : '0'}</i></span>${free ? '<span class="hc-trophy">трофей</span>' : ''}${c.modes ? '<span class="hc-modes">⇄</span>' : ''}
     ${c.kind === 'unit' ? `<b class="hc-atk"><i>${c.atk}</i></b><b class="hc-hp"><i>${c.hp}</i></b>` : c.kind === 'bomb' ? `<b class="hc-hp"><i>${c.hp}</i></b>` : ''}`;
 }
@@ -1281,6 +1310,7 @@ function overHTML() {
     ${mvpHTML()}
     <p class="note">Вы играли за ${last.side} · ${last.turns} ход.</p>
     ${S.tut ? '<p class="note">Обучение пройдено! Дальше — обычные матчи с ботом или онлайн.</p>' : ''}
+    ${xpLine()}
     ${S.tut ? '' : '<button class="primary big-btn" data-act="hs-again">Ещё матч</button>'}<button class="${S.tut ? 'primary big-btn' : 'ghost'}" data-act="hs-share">Поделиться</button><button class="ghost" data-act="hs-menu">В меню</button>
   </div></div>`;
 }
@@ -1310,6 +1340,81 @@ function choiceHTML() {
 }
 
 // ─────────────────────────── Все карты и правила ───────────────────────────
+// ─────────────────────────── Мастерская: свои карты ───────────────────────────
+/** Сколько опыта за что (в неделю — не больше XP_WEEK_CAP). */
+const XP_GAIN = { botWin: 120, botLoss: 60, onlineWin: 200, onlineLoss: 100, quest: 100 };
+function xpLine() {
+  if (!S.lastXp) return '';
+  const p = progress();
+  return `<p class="xp-line">+${S.lastXp} опыта · неделя ${p.weekXp}/${XP_WEEK_CAP}${p.xp >= FORGE_COST_XP && p.cards.length < FORGE_MAX_CARDS ? ' · <b>хватает на свою карту!</b>' : ''}</p>`;
+}
+/** Плитка для главного меню. */
+export function hsForgeTile(): string {
+  const p = progress();
+  const pct = Math.min(100, Math.round((p.xp / FORGE_COST_XP) * 100));
+  return `<button class="km-forge" data-act="hs-page" data-to="forge">
+    <span class="kf-ico">⚒</span><span class="kf-main"><b>Мастерская</b><small>Свои карты: ${p.cards.length}/${FORGE_MAX_CARDS} · опыт ${p.xp}</small>
+    <i class="kf-bar"><i style="width:${pct}%"></i></i></span>${canCreate() ? '<em class="kf-new">можно создать</em>' : ''}</button>`;
+}
+function forgeHTML() {
+  const p = progress();
+  const weekPct = Math.round((p.weekXp / XP_WEEK_CAP) * 100);
+  const slots = Array.from({ length: FORGE_MAX_CARDS }, (_, i) => {
+    const sp = p.cards[i];
+    if (!sp) return `<div class="fg-slot empty"><button class="fg-add" data-act="hs-forge-new" ${canCreate() ? '' : 'disabled'}>+<small>${canCreate() ? `Создать · ${FORGE_COST_XP} опыта` : p.xp < FORGE_COST_XP ? `нужно ещё ${FORGE_COST_XP - p.xp} опыта` : ''}</small></button></div>`;
+    const c = toHCard(sp), confirm = S.forge.confirmDel === i;
+    return `<div class="fg-slot"><button class="hc f-N" data-act="hs-cardinfo" data-v="${c.id}">${cardFace(c, false, c.cost, mySide())}</button>
+      <small class="fg-meta">${pointsOf(sp)} пунктов · ${money(c.cost)}</small>
+      <button class="ghost sm ${confirm ? 'danger' : ''}" data-act="hs-forge-del" data-i="${i}" ${canDestroy() || confirm ? '' : 'disabled'}>${confirm ? `Точно? −${FORGE_DESTROY_XP} опыта` : `Уничтожить · ${FORGE_DESTROY_XP}`}</button></div>`;
+  }).join('');
+  const info = S.info && hcard(S.info).id === S.info ? `<div class="hs-ov" data-act="hs-closeinfo"><div class="hs-ovbox">${bigCardHTML(hcard(S.info))}<button class="ghost" data-act="hs-closeinfo">Закрыть</button></div></div>` : '';
+  return `<main class="rm scroll fg">
+    <header class="rm-head"><button class="ghost sm" data-act="hs-menu">← Меню</button><span class="rm-title">Мастерская</span><span></span></header>
+    <section class="fg-xp"><div><small>Опыт</small><b>${p.xp}</b></div>
+      <div class="fg-week"><small>На этой неделе: ${p.weekXp} / ${XP_WEEK_CAP} · сброс через ${daysToWeekReset()} дн.</small><i class="kf-bar"><i style="width:${weekPct}%"></i></i></div></section>
+    <p class="note">Своя карта — боец, которого вы собираете сами из ${FORGE_BUDGET} пунктов: основа, атака, здоровье, броня и свойства. Цена в игре считается по пунктам, поэтому своя карта не сильнее обычных за те же деньги — она ваша. Создание — ${FORGE_COST_XP} опыта (примерно неделя игры), уничтожение — ${FORGE_DESTROY_XP}. Своих карт — не больше ${FORGE_MAX_CARDS}, в колоде — до ${CUSTOM_PER_DECK} копий; положить их в колоду можно в «Колодах».</p>
+    <p class="note fg-earn">Опыт: победа над ботом +${XP_GAIN.botWin} (обычный и сложный), поражение +${XP_GAIN.botLoss}; онлайн +${XP_GAIN.onlineWin} / +${XP_GAIN.onlineLoss}; задание дня +${XP_GAIN.quest}.</p>
+    <div class="fg-slots">${slots}</div>
+  </main>${info}`;
+}
+function forgeEditHTML() {
+  const d = S.forge.draft!;
+  const c = toHCard({ ...d, name: d.name.trim() || 'Своя карта' });
+  const pts = pointsOf(d), over = pts > FORGE_BUDGET;
+  const probs = specProblems({ ...d, name: d.name.trim() || 'Своя карта' });
+  const nameOk = d.name.trim().length >= 2;
+  const bases = (Object.keys(BASES) as BaseId[]).map((b) => `<button class="${d.base === b ? 'on' : ''}" data-act="hs-forge-base" data-v="${b}"><b>${esc(BASES[b].name)}</b><small>${BASES[b].pts} пт${BASES[b].kw.length ? ` · ${BASES[b].kw.map((k) => KW_RU[k][0]).join(', ')}` : ''}</small></button>`).join('');
+  const arts = BASES[d.base].arts.map((a) => { const img = unitArt({ ...c, art: a }, mySide()) ?? hImg({ ...c, img: a }); return `<button class="fg-art ${d.art === a ? 'on' : ''}" data-act="hs-forge-art" data-v="${a}"><img src="${esc(img)}" alt=""></button>`; }).join('');
+  const stat = (k: 'atk' | 'hp' | 'armor', label: string) => `<div class="fg-stat"><span>${label}<small>${PTS[k]} пт за единицу</small></span>
+    <button data-act="hs-forge-stat" data-k="${k}" data-d="-1" ${d[k] <= LIMITS[k][0] ? 'disabled' : ''}>−</button><b>${d[k]}</b><button data-act="hs-forge-stat" data-k="${k}" data-d="1" ${d[k] >= LIMITS[k][1] ? 'disabled' : ''}>+</button></div>`;
+  const kws = FORGE_KW.filter((k) => !BASES[d.base].kw.includes(k)).map((k) => { const on = d.kw.includes(k), v = KW_PTS[k] ?? 0;
+    return `<button class="fg-kw ${on ? 'on' : ''}" data-act="hs-forge-kw" data-v="${k}"><b>${KW_RU[k][0]}<em class="${v < 0 ? 'neg' : ''}">${v > 0 ? '+' : ''}${v}</em></b><small>${KW_RU[k][1]}</small></button>`; }).join('');
+  return `<main class="rm scroll fg">
+    <header class="rm-head"><button class="ghost sm" data-act="hs-forge-back">← Мастерская</button><span class="rm-title">Новая карта</span><span></span></header>
+    <section class="fg-top">
+      <div class="hc big f-N">${cardFace(c, false, c.cost, mySide())}</div>
+      <div class="fg-sum"><small>Пункты</small><b class="${over ? 'over' : ''}">${pts} / ${FORGE_BUDGET}</b><i class="kf-bar ${over ? 'over' : ''}"><i style="width:${Math.min(100, pts)}%"></i></i>
+        <small>Цена в игре</small><b>${money(c.cost)}</b>
+        ${probs.filter((x) => nameOk || !x.startsWith('Название')).map((x) => `<p class="fg-prob">${esc(x)}</p>`).join('')}</div>
+    </section>
+    <h4 class="sub">Название</h4><input id="forgename" class="fg-name" maxlength="18" placeholder="Например: Ночной охотник" value="${esc(d.name)}" autocomplete="off">
+    <h4 class="sub">Основа</h4><div class="fg-bases">${bases}</div>
+    <h4 class="sub">Портрет</h4><div class="fg-arts">${arts}</div>
+    <h4 class="sub">Характеристики</h4>${stat('atk', 'Атака')}${stat('hp', 'Здоровье')}${stat('armor', 'Броня')}
+    <h4 class="sub">Свойства · до ${LIMITS.kw}</h4><div class="fg-kws">${kws}</div>
+    <button class="primary big-btn" data-act="hs-forge-create" ${probs.length ? 'disabled' : ''}>Создать · ${FORGE_COST_XP} опыта</button>
+  </main>`;
+}
+// Название своей карты печатается в поле — запоминаем его, чтобы перерисовка экрана не стёрла текст
+document.addEventListener('input', (e) => {
+  const t = e.target as HTMLInputElement;
+  if (t?.id === 'forgename' && S.forge.draft) {
+    S.forge.draft.name = t.value.slice(0, 18);
+    const btn = document.querySelector<HTMLButtonElement>('[data-act="hs-forge-create"]');
+    if (btn) btn.disabled = specProblems({ ...S.forge.draft, name: S.forge.draft.name.trim() }).length > 0;
+  }
+});
+
 // ─────────────────────────── Свои колоды ───────────────────────────
 function decksHTML() {
   const row = (side: Side) => AGENTS.filter((a) => a.side === side).map((a) => {
@@ -1328,7 +1433,7 @@ function decksHTML() {
 function deckEditHTML() {
   const d = S.deck!;
   const a = agent(d.agent), side = a.side as Side;
-  const pool = deckPool(d.agent).map((id) => hcard(id))
+  const pool = [...myCustomIds(), ...deckPool(d.agent)].map((id) => hcard(id))
     .filter((c) => d.filter === 'all' || (d.filter === 'unit' ? c.kind === 'unit' : d.filter === 'spell' ? c.kind === 'spell' : c.kind === 'trap'))
     .sort((x, y) => x.cost - y.cost || x.name.localeCompare(y.name));
   const cnt = (id: string) => d.cards.filter((x) => x === id).length;
@@ -1721,6 +1826,7 @@ async function finishOnline(m: Extract<S2C, { t: 'over' }>) {
     recordRound(S.on.myAgent, win, S.s.p[0].kills);
     questsAtEnd(win, S.on.myAgent, S.s.p[0].kills, true);
   }
+  S.lastXp = gainXp(win ? XP_GAIN.onlineWin : XP_GAIN.onlineLoss);
   track('online_end', { ranked: m.ranked, win, reason: m.reason, side: mySide(), agent: S.on.myAgent, opp: S.on.oppAgent, map: S.map, turns: S.s?.p[0].turns ?? 0, delta: m.rating ? m.rating.after - m.rating.before : 0 });
   S.phase = 'over'; S.busy = false; S.sel = null;
 }
@@ -2037,6 +2143,7 @@ function onlineOverHTML() {
     ${rt ? (() => { const lb = levelOf(rt.before).level, la = levelOf(rt.after).level;
       return `<div class="ol-delta ${delta >= 0 ? 'up' : 'down'}">${levelBadge(rt.after)}<div><b>${delta >= 0 ? '+' : ''}${delta} Elo</b><small>${rt.before} → ${rt.after}</small>
         ${la !== lb ? `<em class="${la > lb ? 'lvup' : 'lvdown'}">${la > lb ? 'Новый уровень' : 'Уровень понижен'}: ${la}</em>` : `<small>${levelProgress(rt.after)}</small>`}</div></div>`; })() : '<p class="note">Дуэль без рейтинга</p>'}
+    ${xpLine()}
     ${rematchBtn()}
     <button class="ghost" data-act="hs-share">Поделиться</button>
     <button class="ghost" data-act="hs-again">${o.ranked ? 'Ещё рейтинговая' : 'В лобби'}</button>
@@ -2069,6 +2176,7 @@ function questsAtEnd(win: boolean, agentId: string, kills: number, online: boole
   questToast(fresh);
 }
 function questToast(qs: QuestDef[]) {
+  if (qs.length) gainXp(qs.length * XP_GAIN.quest);
   qs.forEach((q, i) => setTimeout(() => { fx.banner(`Задание выполнено: ${q.text} · +${q.pts}`, 'defuse', 1800); haptic.win(); }, 2600 + i * 1900));
 }
 

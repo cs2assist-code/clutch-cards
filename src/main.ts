@@ -8,9 +8,10 @@ import { sfx, soundOn, toggleSound, unlock as unlockSound } from './sound';
 import { toggleVoice, voiceEnabled } from './voice';
 import { analyticsOn, toggleAnalytics, track } from './analytics';
 import { loadDecks } from './hs/decks';
+import { loadProgress } from './hs/progress';
 import { getLang, initI18n, setLang } from './i18n';
 import { musicEnabled, refreshMusic, setMusic, toggleMusic, unlockMusic } from './music';
-import { hsClick, hsMusic, hsInvite, hsInviteHTML, hsLevelBadge, hsLevelProgress, hsProfile, hsHTML, hsInit, hsJoinDuel, hsOpen } from './hs/ui';
+import { hsClick, hsForgeTile, hsMusic, hsInvite, hsInviteHTML, hsLevelBadge, hsLevelProgress, hsProfile, hsHTML, hsInit, hsJoinDuel, hsOpen } from './hs/ui';
 import { loadQuests, questView } from './quests';
 import { startDuelCode } from './online/client';
 import { agentArt, cssUrl, esc } from './art';
@@ -86,6 +87,7 @@ function menuHTML() {
         <button class="km-mode ct" data-act="hs-enter"><img src="${esc(portrait('ct', 'awp'))}" alt=""><span><b>С ботом</b><small>Тренировка без рейтинга</small></span></button>
         <button class="km-mode t ${stats.tutorialDone ? '' : 'hot'}" data-act="tutorial"><img src="${esc(portrait('t', 'glock'))}" alt=""><span><b>Обучение</b><small>${stats.tutorialDone ? 'Пройдено · повторить' : 'Первый матч с подсказками'}</small></span></button>
       </div>
+      ${hsForgeTile()}
       <button class="km-quests" data-act="quests">
         <span class="km-qhead"><b>Задания дня</b><small>${done} из ${q.list.length}${q.streak ? ` · серия ${q.streak}` : ''}</small></span>
         ${q.list.map((x) => `<span class="km-q ${x.done ? 'done' : ''}"><em>${esc(x.text)}</em><i style="--p:${(x.prog / x.goal).toFixed(3)}"></i></span>`).join('')}
@@ -155,7 +157,7 @@ root.addEventListener('click', (ev) => {
   const a = actEl.dataset.act!;
   haptic.tap();
   if (a === 'hs-enter') { ui.screen = 'hs'; setBackButton(() => go('menu')); hsOpen(); return; }
-  if (a === 'hs-page') { ui.screen = 'hs'; setBackButton(() => go('menu')); hsOpen(actEl.dataset.to as 'cards' | 'rules' | 'decks'); return; }
+  if (a === 'hs-page') { ui.screen = 'hs'; setBackButton(() => go('menu')); hsOpen(actEl.dataset.to as 'cards' | 'rules' | 'decks' | 'forge'); return; }
   if (a.startsWith('hs-') && ui.screen === 'hs' && hsClick(a, actEl)) return;
   switch (a) {
     case 'inv-yes': return hsInvite(true);
@@ -197,7 +199,7 @@ render();
 // Приглашение на дуэль (ссылка t.me/<бот>/<app>?startapp=duel_КОД) — сразу в лобби и в дуэль
 const duel = startDuelCode();
 if (duel) { ui.screen = 'hs'; setBackButton(() => go('menu')); hsJoinDuel(duel); }
-void Promise.all([loadStats(), loadQuests(), loadDecks()]).then(() => {
+void Promise.all([loadStats(), loadQuests(), loadProgress().then(loadDecks)]).then(() => {
   render();
   const tg = (window as unknown as { Telegram?: { WebApp?: { initData?: string; platform?: string } } }).Telegram?.WebApp;
   track('app_open', { tg: !!tg?.initData, pf: tg?.platform ?? 'web', w: innerWidth, h: innerHeight, games: stats.games, ms: Math.round(performance.now()) });

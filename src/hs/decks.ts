@@ -3,6 +3,7 @@
 import { loadJSON, saveJSON } from '../storage';
 import { validDeck } from './cards';
 import type { Agents } from '../online/protocol';
+import { mySpecs } from './progress';
 
 const KEY = 'clutch_decks';
 let decks: Record<string, string[]> = {};
@@ -19,11 +20,19 @@ export function setDeck(agentId: string, deck: string[] | null) {
   else delete decks[agentId];
   saveJSON(KEY, decks);
 }
+/** Своя карта уничтожена — колоды с ней возвращаются к стандартным. */
+export function purgeCustom(id: string) {
+  let changed = false;
+  for (const [agent, list] of Object.entries(decks)) if (list.includes(id)) { delete decks[agent]; changed = true; }
+  if (changed) saveJSON(KEY, decks);
+  return changed;
+}
 /** Агенты для сервера вместе со своими колодами (если собраны). */
 export function agentsWithDecks(T: string, CT: string): Agents {
   const a: Agents = { T, CT };
   const dT = getDeck(T), dCT = getDeck(CT);
   if (dT) a.dT = dT;
   if (dCT) a.dCT = dCT;
+  if ((dT ?? []).concat(dCT ?? []).some((id) => id.startsWith('cc_'))) a.cc = mySpecs();   // свои карты — серверу на проверку
   return a;
 }
