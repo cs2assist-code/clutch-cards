@@ -22,6 +22,7 @@ import { readFileSync, statSync } from 'node:fs';
 import { corsPreflight, initAnalytics, statsCsv, statsPage } from './analytics';
 import { AGENTS, MAPS } from '../src/game/cards';
 import { validDeck } from '../src/hs/cards';
+import { FORGE_MAX_CARDS, registerCustoms, validSpec } from '../src/hs/forge';
 import type { Side } from '../src/game/types';
 import { canEco, choose, eco, endTurn, mulligan, newGame, setRng, startGame, type HState, type PI } from '../src/hs/engine';
 import { apply } from '../src/hs/ai';
@@ -182,9 +183,13 @@ function validAgents(a: unknown): Agents | null {
   const ok = (id: unknown, side: Side) => AGENTS.some((x) => x.id === id && x.side === side);
   if (!o || !ok(o.T, 'T') || !ok(o.CT, 'CT')) return null;
   const r: Agents = { T: o.T, CT: o.CT };
+  // Свои карты (Мастерская): проверяем каждую и регистрируем; id зависит от содержимого — подменить нельзя
+  const cc = Array.isArray(o.cc) ? o.cc.filter(validSpec).slice(0, FORGE_MAX_CARDS) : [];
+  const allowed = new Set(registerCustoms(cc));
+  if (cc.length) r.cc = cc;
   // Свои колоды: берём, только если собраны по правилам (иначе — колода агента по умолчанию)
-  if (validDeck(o.T, o.dT)) r.dT = [...o.dT];
-  if (validDeck(o.CT, o.dCT)) r.dCT = [...o.dCT];
+  if (validDeck(o.T, o.dT, allowed)) r.dT = [...o.dT];
+  if (validDeck(o.CT, o.dCT, allowed)) r.dCT = [...o.dCT];
   return r;
 }
 
@@ -301,7 +306,8 @@ function startGameIn(r: Room) {
   setDeadline(r, MULL_MS + 3000, () => { for (const p of [0, 1] as PI[]) if (!r.seats[p].mullDone) doMull(r, p, []); });
   for (const p of [0, 1] as PI[]) send(r.seats[p].ws, startMsg(r, p));
 }
-const startMsg = (r: Room, p: PI): S2C => ({ t: 'start', map: r.map, side: r.sides[p], myAgent: r.agents[p], oppAgent: r.agents[other(p)], view: viewFor(r.s!, p), deadline: r.deadline });
+const customsOf = (r: Room) => [...(r.seats[0].agents.cc ?? []), ...(r.seats[1].agents.cc ?? [])];
+const startMsg = (r: Room, p: PI): S2C => ({ t: 'start', customs: customsOf(r), map: r.map, side: r.sides[p], myAgent: r.agents[p], oppAgent: r.agents[other(p)], view: viewFor(r.s!, p), deadline: r.deadline });
 
 function doMull(r: Room, p: PI, uids: string[]) {
   if (r.phase !== 'mull' || r.seats[p].mullDone) return;
@@ -442,7 +448,7 @@ function onReconnect(ws: WS, r: Room) {
   send(ws, { t: 'found', ranked: r.ranked, opp: { id: o.id, name: o.name, rating: Math.round(o.rating), league: leagueOf(o.rating).name } });
   if (r.phase === 'knife' || r.phase === 'side') send(ws, knifeMsg(r, p, r.knife.rounds[r.knife.rounds.length - 1]));
   else if (r.phase === 'veto') send(ws, vetoMsg(r, p));
-  else send(ws, { t: 'sync', phase: r.phase === 'mull' ? 'mull' : 'play', view: viewFor(r.s!, p), deadline: r.deadline, map: r.map, side: r.sides[p], myAgent: r.agents[p], oppAgent: r.agents[other(p)], mullDone: st.mullDone });
+  else send(ws, { t: 'sync', customs: customsOf(r), phase: r.phase === 'mull' ? 'mull' : 'play', view: viewFor(r.s!, p), deadline: r.deadline, map: r.map, side: r.sides[p], myAgent: r.agents[p], oppAgent: r.agents[other(p)], mullDone: st.mullDone });
 }
 
 // ─────────────────────────── Сообщения ───────────────────────────

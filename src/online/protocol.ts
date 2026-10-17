@@ -83,7 +83,7 @@ export type S2C =
   /** Ножевой раунд (уже повёрнут: вы — 0). pick: кто выбирает сторону, когда ножи закончились. */
   | { t: 'knife'; k: KnifeState; picked: boolean; oppPicked: boolean; reveal?: KnifeRound; deadline: number; pick?: 'me' | 'opp'; oppAgents: Agents }
   | { t: 'veto'; maps: string[]; banned: { map: string; mine: boolean }[]; myTurn: boolean; deadline: number; picked?: string }
-  | { t: 'start'; map: string; side: Side; myAgent: string; oppAgent: string; view: HState; deadline: number }
+  | { t: 'start'; customs?: CustomSpec[]; map: string; side: Side; myAgent: string; oppAgent: string; view: HState; deadline: number }
   | { t: 'begin'; view: HState; events: Ev[]; deadline: number }
   | { t: 'step'; actor: PI; a: StepAction; card?: string; events: Ev[]; view: HState; deadline: number }
   | { t: 'deny'; reason: string }
@@ -98,7 +98,7 @@ export type S2C =
   | { t: 'rematch'; state: 'wait' | 'offer' | 'gone' }
   | { t: 'report_ok'; dup: boolean }
   | { t: 'top'; rows: { id?: string; name: string; rating: number; games: number; wins: number; league: string }[]; season: string; prizes?: SeasonPrizes }
-  | { t: 'sync'; phase: 'veto' | 'mull' | 'play'; view?: HState; deadline: number; map?: string; side?: Side; myAgent?: string; oppAgent?: string; mullDone?: boolean }
+  | { t: 'sync'; customs?: CustomSpec[]; phase: 'veto' | 'mull' | 'play'; view?: HState; deadline: number; map?: string; side?: Side; myAgent?: string; oppAgent?: string; mullDone?: boolean }
   | { t: 'err'; msg: string }
   | { t: 'pong'; now: number };
 

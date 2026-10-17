@@ -9,7 +9,7 @@ import { track } from '../analytics';
 import { dateLoc, isEn, numLoc, tr } from '../i18n';
 import { agentsWithDecks, getDeck, purgeCustom, setDeck } from './decks';
 import { canCreate, canDestroy, createCard, daysToWeekReset, destroyCard, gainXp, myCustomIds, progress } from './progress';
-import { BASES, FORGE_BUDGET, FORGE_COST_XP, FORGE_DESTROY_XP, FORGE_KW, FORGE_MAX_CARDS, KW_PTS, LIMITS, PTS, pointsOf, priceOf, specProblems, toHCard, XP_WEEK_CAP, type BaseId, type CustomSpec } from './forge';
+import { BASES, FORGE_BUDGET, FORGE_COST_XP, FORGE_DESTROY_XP, FORGE_KW, FORGE_MAX_CARDS, KW_PTS, LIMITS, PTS, pointsOf, priceOf, registerCustoms, specProblems, toHCard, XP_WEEK_CAP, type BaseId, type CustomSpec } from './forge';
 import { recordRound, recordRoundsMatch, markTutorialDone } from '../stats';
 import { SIL } from './art-index';
 import { BEATS, botKnifeMove, KNIFE_HP, MOVE_RU, MOVES, newKnife, resolveKnife, type KnifeRound, type KnifeState, type Move } from './knife';
@@ -1731,6 +1731,7 @@ async function onNet(m: S2C) {
     case 'sync': {
       if (!S.on) return;
       if (m.t === 'sync' && m.phase === 'veto') break;
+      registerCustoms(m.customs);   // свои карты обоих игроков — чтобы видеть карты соперника
       S.map = m.map!; S.on.side = m.side!; S.on.myAgent = m.myAgent!; S.on.oppAgent = m.oppAgent!;
       S.setup[m.side!] = m.myAgent!; S.botAgent = m.oppAgent!;
       S.s = m.view!; S.on.deadline = m.deadline;

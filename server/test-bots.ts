@@ -2,13 +2,22 @@
 //   bun server/server.ts &   затем   bun server/test-bots.ts [ws://localhost:8790/ws] [games=1] [duel]
 // Боты видят только то, что сервер им прислал (свою руку и открытый стол), и ходят тем же ботом, что и офлайн.
 import { botStep } from '../src/hs/ai';
+import { agentDeck } from '../src/hs/cards';
+import { registerCustoms, toHCard, type CustomSpec } from '../src/hs/forge';
 import type { HState } from '../src/hs/engine';
 import type { C2S, S2C } from '../src/online/protocol';
 
 const URL = process.argv[2] ?? 'ws://localhost:8790/ws';
 const GAMES = Number(process.argv[3] ?? 1);
 const DUEL = process.argv[4] === 'duel';
-const AG = [{ T: 't_phoenix', CT: 'ct_sas' }, { T: 't_balkan', CT: 'ct_swat' }];
+const AG: import('../src/online/protocol').Agents[] = [{ T: 't_phoenix', CT: 'ct_sas' }, { T: 't_balkan', CT: 'ct_swat' }];
+// CUSTOM=1 — у бота A своя карта из Мастерской в обеих колодах (проверка, что сервер принимает и показывает её сопернику)
+if (process.env.CUSTOM) {
+  const spec: CustomSpec = { name: 'Тестовый ствол', base: 'rifle', atk: 5, hp: 8, armor: 0, kw: ['rush'], art: 'ak47' };
+  const id = toHCard(spec).id;
+  const deck = (agent: string) => { const d = agentDeck(agent).slice(0, 20); d[0] = id; d[1] = id; return d; };
+  AG[0] = { ...AG[0], dT: deck(AG[0].T), dCT: deck(AG[0].CT), cc: [spec, { ...spec, atk: 8, hp: 16, kw: ['twice', 'rush', 'helmet'] }] };   // вторая — нечестная, сервер её отбросит
+}
 
 function bot(name: string, idx: number, onCode?: (c: string) => void, joinCode?: Promise<string>) {
   return new Promise<{ name: string; result: S2C | null; steps: number; denies: number; leaks: number }>((resolve) => {
@@ -46,7 +55,15 @@ function bot(name: string, idx: number, onCode?: (c: string) => void, joinCode?:
           else if (!m.picked && m.k.winner === null) setTimeout(() => tx({ t: 'knife', move: (['knife', 'shield', 'zeus'] as const)[Math.floor(Math.random() * 3)] }), 30);
           knifeMsgs++; break;
         case 'veto': if (m.myTurn) { const left = m.maps.filter((x) => !m.banned.some((b) => b.map === x)); tx({ t: 'ban', map: left[0] }); } break;
-        case 'start': view = m.view; tx({ t: 'mull', uids: [] }); break;
+        case 'start': view = m.view; tx({ t: 'mull', uids: [] });
+          if (process.env.CUSTOM) {
+            registerCustoms(m.customs);
+            const mine = [...m.view.p[0].deck, ...m.view.p[0].hand.map((c) => c.id)].filter((x) => x.startsWith('cc_')).length;
+            console.log(name, 'своих карт в колоде+руке:', mine, '· карт соперника/своих от сервера:', (m.customs ?? []).length);
+            if (idx === 0 && mine !== 2) customBad = true;
+            if (idx === 1 && (m.customs ?? []).length !== 1) customBad = true;
+          }
+          break;
         case 'begin': view = m.view; busy = false; think(); break;
         case 'step': view = m.view; steps++; busy = false; setTimeout(think, 5); break;
         case 'deny': denies++; busy = false; tx({ t: 'end' }); busy = true; break;
@@ -59,7 +76,8 @@ function bot(name: string, idx: number, onCode?: (c: string) => void, joinCode?:
   });
 }
 
-let bad = false;   // для CI: игра без итога или утечка чужих карт — ошибка
+let bad = false;
+let customBad = false;   // для CI: игра без итога или утечка чужих карт — ошибка
 for (let g = 0; g < GAMES; g++) {
   let setCode: (c: string) => void = () => {};
   const code = new Promise<string>((r) => { setCode = r; });
@@ -69,4 +87,4 @@ for (let g = 0; g < GAMES; g++) {
   if (!a.result || !b.result || a.leaks || b.leaks) bad = true;
   console.log(`игра ${g + 1}: ${((Date.now() - t0) / 1000).toFixed(1)}с · A: ${ov(a)}, шагов ${a.steps}, отказов ${a.denies}, утечек ${a.leaks} · B: ${ov(b)}, отказов ${b.denies}, утечек ${b.leaks}`);
 }
-process.exit(bad ? 1 : 0);
+process.exit(bad || customBad ? 1 : 0);
